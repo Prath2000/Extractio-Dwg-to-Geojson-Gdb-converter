@@ -1413,40 +1413,67 @@ Use this to catch DWG changes, layer-name mismatches, or filtering that is too a
 
 ## 19. LLM YAML Builder
 
-extractio can scan your open DWGs and use an LLM (Groq or Gemini) to generate a config file from plain-English descriptions. Useful when starting a new project with many layers.
+The LLM builder uses Groq or Gemini to generate a config file from reference documents and plain-English descriptions. **AutoCAD does not need to be running.** The builder is completely independent of AutoCAD — it reads documents and calls an LLM, nothing else.
 
 ```
 # Set your API key (Windows):
 set GROQ_API_KEY=your_key_here
 
-# Run the builder:
+# Run the builder — no AutoCAD required:
 python extractio.py config.yaml --build
 ```
 
-The builder:
+### How it works
 
-1. Scans all open DWGs and lists all layer names and entity types
-2. Prompts you to describe what each layer represents and what fields you need
-3. Asks you to review each generated layer config
-4. Writes the final YAML to the config file you specified
+The builder collects context from up to four sources, then sends them all to the LLM:
 
-Optional: pass reference documents (spec sheets, data dictionaries) to give the LLM more context:
+| Source | How it is provided | AutoCAD needed? |
+|---|---|---|
+| Reference documents (spec sheets, field lists, existing YAMLs) | `--ref` flag or interactive prompt | No |
+| DWG scan JSON (exact layer names, entity types, attribute tags) | auto-detected `scan_*.json` in script folder, or `--from-scan` | No (scan itself needs AutoCAD, but only once) |
+| User notes / free-text prompt | typed interactively | No |
+
+The LLM reads all provided context and generates one config entry per identified layer. You then review each entry and confirm, skip, or correct it before the YAML is written.
+
+### Basic usage — reference documents only
+
+Pass spec sheets, data dictionaries, or an existing YAML as context:
 
 ```
-python extractio.py config.yaml --build --ref spec_sheet.pdf field_list.docx
+python extractio.py config.yaml --build --ref spec_sheet.pdf
+python extractio.py config.yaml --build --ref field_list.docx existing_config.yaml
 ```
 
-Skip the interactive review loop (auto-accept all layers):
+If no `--ref` is given, the builder prompts you to enter document paths or type a description interactively.
+
+### Adding DWG layer names for accuracy
+
+For the LLM to use exact AutoCAD layer names (rather than guessing from document text), generate a scan JSON first. This is the only step that requires AutoCAD:
+
+```
+# Step 1 — scan DWGs once (AutoCAD must be open with DWGs loaded):
+python extractio.py config.yaml --scan-only
+
+# Step 2 — build YAML offline, no AutoCAD needed:
+python extractio.py config.yaml --build --from-scan scan_20250101_120000.json
+```
+
+The scan JSON is saved to the script folder with a timestamped name. Subsequent `--build` runs auto-detect the most recent scan file and offer to include it.
+
+### Skip the review loop
+
+Auto-accept all generated layers without interactive confirmation:
 
 ```
 python extractio.py config.yaml --build --accept-all
 ```
 
-Use a saved DWG scan instead of a live AutoCAD session:
+### Clone from an existing config
+
+Remap an existing config's layer definitions to a new set of DWGs (aliases updated, layer names fuzzy-matched):
 
 ```
-python extractio.py config.yaml --scan-only                  # save scan JSON
-python extractio.py config.yaml --build --from-scan scan.json  # use it offline
+python extractio.py config.yaml --clone-from other_config.yaml
 ```
 
 ---
@@ -1474,10 +1501,10 @@ The config path is optional. If omitted, extractio searches the script folder fo
 | `--status` | Same as `--list` |
 | `--validate` | Validate config structure and exit |
 | `--dwg-layers DWG_KEY` | Print all CAD layer names and entity counts from the DWG aliased as `DWG_KEY`, then exit |
-| `--scan-only` | Scan DWGs, save snapshot JSON, exit |
-| `--build` | LLM YAML builder mode |
-| `--from-scan FILE` | Use saved DWG scan JSON instead of connecting to AutoCAD |
-| `--no-autocad` | Skip AutoCAD connection (for `--build --from-scan` workflows) |
+| `--scan-only` | Connect to AutoCAD, scan all DWGs, save a layer-name snapshot JSON, exit |
+| `--build` | LLM YAML builder — **no AutoCAD required**; reads reference docs and optional scan JSON |
+| `--from-scan FILE` | Provide a specific scan JSON to `--build` (overrides auto-detection) |
+| `--no-autocad` | Explicitly skip AutoCAD connection check when using `--build` |
 | `--versions-dir DIR` | Override default version snapshot directory |
 
 ### Layer name matching
