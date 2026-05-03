@@ -125,6 +125,7 @@ pip install filelock groq google-generativeai pdfplumber python-docx pandas
 - `groq` / `google-generativeai` — LLM-assisted YAML builder (`--build`)
 - `pdfplumber` / `python-docx` — reference document parsing in `--build` mode
 - `pandas` — used in `verify.py`
+- `fiona` — File Geodatabase output (`--output-format gdb`); requires GDAL 3.6+
 
 No package installation or virtual environment is required (though using one is good practice). The entire engine is in the single file `extractio.py`.
 
@@ -286,6 +287,8 @@ global:
   project_name: "MyProject"              # used in version labels
   crs: "EPSG:32632"                      # output coordinate reference system
   output_dir: "./outputs"                # created automatically if it doesn't exist
+  # output_format: geojson               # geojson (default) or gdb
+  # gdb_name: MyProject.gdb             # GDB filename; defaults to <project_name>.gdb
 
   # DWG alias file — maps short names to absolute file paths.
   # Keep this file out of git (it contains machine-specific paths).
@@ -1506,6 +1509,7 @@ The config path is optional. If omitted, extractio searches the script folder fo
 | `--from-scan FILE` | Provide a specific scan JSON to `--build` (overrides auto-detection) |
 | `--no-autocad` | Explicitly skip AutoCAD connection check when using `--build` |
 | `--versions-dir DIR` | Override default version snapshot directory |
+| `--output-format FORMAT` | `geojson` (default) or `gdb` — overrides `output_format` in config |
 
 ### Layer name matching
 
@@ -1586,7 +1590,7 @@ Layers with `derive_from:` (`spatial_reference` or `parent_layer`) ignore the lo
 
 ## 22. Output Format
 
-Each layer writes one GeoJSON file (RFC 7946) with an additional `crs` member for compatibility with GIS tools that require explicit CRS declarations.
+extractio supports two output formats: **GeoJSON** (default) and **File Geodatabase (GDB)**. The format is selected per-run and does not change anything in the extraction logic — only the final write step differs.
 
 ### File structure
 
@@ -1617,18 +1621,58 @@ Each layer writes one GeoJSON file (RFC 7946) with an additional `crs` member fo
 }
 ```
 
-### Conventions
+### GeoJSON output (default)
+
+Each layer writes one `.geojson` file (RFC 7946) with an additional `crs` member for compatibility with GIS tools that require explicit CRS declarations.
 
 | Item | Behaviour |
 |---|---|
 | Coordinates | In the CRS declared in `global.crs` |
 | Null / blank values | Written as `" "` (a single space string), not JSON null |
 | OBJECTID | Resets to 1 for each layer independently |
-| Connection_ID | Globally unique within a project when zone/plot IDs are unique |
 | File name | Set by `output:` in the layer config; defaults to `LayerName.geojson` |
 | Overwrite | Existing file is overwritten silently on each run (for unlocked layers) |
 | Large layers | Features > 500: written in compact JSON (no indent) for speed and file size |
 | Small layers | Features ≤ 500: written with `indent=2` for readability |
+
+### File Geodatabase output (GDB)
+
+All layers are written as named feature classes inside a single `.gdb` folder instead of individual `.geojson` files.
+
+**Requirement:** `pip install fiona` with GDAL 3.6 or later (the OpenFileGDB write driver is bundled in GDAL 3.6+ — no ArcGIS licence required).
+
+Verify your GDAL version:
+
+```bash
+python -c "import fiona; print(fiona.__gdal_version__)"
+```
+
+**Select GDB output at runtime:**
+
+```bash
+python extractio.py config.yaml --output-format gdb
+```
+
+**Or set it permanently in `config.yaml`:**
+
+```yaml
+global:
+  output_format: gdb          # geojson (default) or gdb
+  gdb_name: MyProject.gdb    # optional; defaults to <project_name>.gdb
+```
+
+**`--output-format` on the command line always wins over `output_format` in config.**
+
+| Item | Behaviour |
+|---|---|
+| GDB location | `<output_dir>/<gdb_name>` (or `<project_name>.gdb` if `gdb_name` omitted) |
+| Layer naming | Uses the layer `name:` field from the YAML config |
+| Field types | Inferred from the first non-null value in each column (`int`, `float`, `str`) |
+| Null values | Written as `null` (native GDB null, not a space string) |
+| Driver | `OpenFileGDB` via fiona — no ArcGIS installation needed |
+| GDAL requirement | GDAL 3.6 or later |
+
+**Note:** the GDB option writes all layers that are extracted in a single run into the same `.gdb` directory. Layers from separate runs append new feature classes — they do not overwrite existing ones unless the layer name matches exactly.
 
 ### Version manifest
 

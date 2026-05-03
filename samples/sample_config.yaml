@@ -25,6 +25,11 @@ global:
   crs: "EPSG:32632"                     # [EDIT] UTM EPSG code for your area
   output_dir: "./outputs"               # [EDIT] folder created automatically
 
+  # Output format — geojson (default) or gdb (File Geodatabase, requires fiona + GDAL 3.6+)
+  # Override at runtime with: --output-format gdb
+  # output_format: geojson              # [EDIT] uncomment and set to "gdb" if needed
+  # gdb_name: MyProject.gdb            # [EDIT] GDB filename; defaults to <project_name>.gdb
+
   # Keeps machine-specific file paths out of this config.
   dwg_paths_file: dwg_paths.yaml
 
@@ -76,8 +81,8 @@ global:
 
   # Auto-numbering pattern for Connection_ID on every feature.
   # Available vars: {plot_name}  {code}  {seq:02d}
-  connection_id:
-    pattern: "{plot_name}_{code}_{seq:02d}"   # [EDIT] add a prefix if needed
+  Unique_id:
+    pattern: "Unique ID Pattern"   # [EDIT] add a prefix if needed
 
   # Spatial reference config — fixed internal key name "block_no".
   # primary_source:   read by {spatial_join: primary}
@@ -103,7 +108,7 @@ global:
 # Locked layers are skipped during --run all.
 # ============================================================
 
-layers:
+layers Examples:
 
   # ----------------------------------------------------------
   # 1. ZONE BOUNDARIES  (polygon — spatial reference layer)

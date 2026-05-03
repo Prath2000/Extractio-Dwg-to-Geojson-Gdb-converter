@@ -57,6 +57,11 @@ try:
     HAS_PDFPLUMBER = True
 except ImportError:
     HAS_PDFPLUMBER = False
+try:
+    import fiona as _fiona
+    HAS_FIONA = True
+except ImportError:
+    HAS_FIONA = False
 
 # Pre-compiled regexes used in the hot path (feature-level loops)
 _RE_HAS_SUBSUFFIX = re.compile(r'[a-z]$')          # 'A9a' yes, 'A9' no
@@ -2980,6 +2985,76 @@ def write_geojson(features, output_path, crs="EPSG:32642"):
 # MMS BLOCK NUMBERING REGISTRATION
 # ============================================================
 
+def _gdb_field_type(val):
+    if isinstance(val, bool):  return "str"
+    if isinstance(val, int):   return "int"
+    if isinstance(val, float): return "float"
+    return "str"
+
+
+def write_gdb_layer(features, gdb_path, layer_name, crs="EPSG:32642"):
+    """Append a layer to a File Geodatabase using fiona + OpenFileGDB driver."""
+    if not HAS_FIONA:
+        Logger.warn("fiona not installed — cannot write GDB. Install: pip install fiona")
+        return
+    clean = [
+        {k: v for k, v in f.items()
+         if k not in ("_centroid", "_pts", "_attr_pts", "_insert_pt")}
+        for f in features
+    ]
+    if not clean:
+        Logger.warn(f"  GDB: no features for '{layer_name}' — skipped")
+        return
+    geom_types = {f["geometry"]["type"] for f in clean if f.get("geometry")}
+    if not geom_types:
+        Logger.warn(f"  GDB: no geometry for '{layer_name}' — skipped")
+        return
+    geom_type = geom_types.pop()
+    sample_keys = list(clean[0].get("properties", {}).keys())
+    props_schema = {}
+    for k in sample_keys:
+        ftype = "str"
+        for feat in clean:
+            v = feat.get("properties", {}).get(k)
+            if v is not None and v != " ":
+                ftype = _gdb_field_type(v)
+                break
+        props_schema[k] = ftype
+    schema = {"geometry": geom_type, "properties": props_schema}
+    try:
+        epsg_code = int(crs.split(":")[-1])
+        fiona_crs = _fiona.crs.CRS.from_epsg(epsg_code)
+    except Exception:
+        fiona_crs = None
+    os.makedirs(gdb_path, exist_ok=True)
+    try:
+        with _fiona.open(gdb_path, "w", driver="OpenFileGDB",
+                         layer=layer_name, schema=schema, crs=fiona_crs) as dst:
+            for feat in clean:
+                props = feat.get("properties", {})
+                cast = {}
+                for k, ftype in props_schema.items():
+                    v = props.get(k)
+                    if v is None or v == " ":
+                        cast[k] = None
+                    elif ftype == "int":
+                        try:   cast[k] = int(v)
+                        except Exception: cast[k] = None
+                    elif ftype == "float":
+                        try:   cast[k] = float(v)
+                        except Exception: cast[k] = None
+                    else:
+                        cast[k] = str(v)
+                dst.write({"type": "Feature",
+                           "geometry": feat.get("geometry"),
+                           "properties": cast})
+        Logger.ok(f"GDB  -> {gdb_path}  [{layer_name}]  ({len(clean)} features)")
+    except Exception as e:
+        Logger.warn(f"  GDB write failed for '{layer_name}': {e}")
+        Logger.warn("  Tip: OpenFileGDB driver requires GDAL 3.6+. "
+                    "Check: python -c \"import fiona; print(fiona.__gdal_version__)\"")
+
+
 def register_mms_block_numbering(acad, global_cfg, spatial, dwg_paths, plot_registry):
     bc     = global_cfg.get("block_no", {}).get("primary_source", {})
     keys   = bc.get("from_dwg", "array_layout")
@@ -4384,6 +4459,9 @@ def main():
                         help="Reference doc(s) for --build mode — skips interactive file prompt")
     parser.add_argument("--accept-all",  dest="accept_all", action="store_true",
                         help="Auto-confirm all generated layers in --build mode (skip review loop)")
+    parser.add_argument("--output-format", dest="output_format", metavar="FORMAT",
+                        choices=["geojson", "gdb"],
+                        help="Output format: geojson (default) or gdb (File Geodatabase via fiona)")
     args = parser.parse_args()
 
     # ── Config auto-discovery ─────────────────────────────────────────────────
@@ -5179,12 +5257,18 @@ def main():
             output_dir,
             layer_cfg.get("output", f"{name.replace(' ','_')}.geojson"))
         _crs = global_cfg.get("crs", "EPSG:32642")
+        _output_fmt = (getattr(args, "output_format", None) or global_cfg.get("output_format", "geojson")).lower().strip()
         # LOCK: final safety net — never write a locked layer that slipped through
         if layer_cfg.get("locked", True) and name not in _target_names:
             Logger.warn(f"LOCK: refusing to write locked layer '{name}' — not a target")
             report.append((name, len(features), "\u26a0  Blocked — locked"))
         else:
-            write_geojson(features, out, crs=_crs)
+            if _output_fmt == "gdb":
+                _gdb_basename = global_cfg.get("gdb_name") or (global_cfg.get("project_name", "output") + ".gdb")
+                _gdb_path = _gdb_basename if os.path.isabs(_gdb_basename) else os.path.join(output_dir, _gdb_basename)
+                write_gdb_layer(features, _gdb_path, name, crs=_crs)
+            else:
+                write_geojson(features, out, crs=_crs)
             _check_expect(layer_cfg, features, name)
             report.append((name, len(features), "\u2713  OK"))
 
