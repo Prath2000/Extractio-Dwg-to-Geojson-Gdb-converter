@@ -6,6 +6,16 @@
 #
 # DWG aliases are resolved from dwg_paths.yaml in the same folder
 # (or set dwg_paths_file to an absolute path).
+#
+# Advanced features:
+#   inherits: base.yaml          — merge a parent config (child wins)
+#   global.layer_library         — define reusable layer templates
+#   common_fields.inject_position — first | last | after:FieldName
+#   common_fields.field_overrides — always-stamp values layers can't override
+#   common_fields.exclude_fields  — skip certain common fields on all layers
+#   fields: {resolver: [...]}    — composable resolver chain (first non-null wins)
+#   expect: {min_features: N}    — post-extraction feature-count validation
+#   $VAR or ${VAR}               — substituted from .env in same folder
 # ============================================================
 
 global:
@@ -28,13 +38,28 @@ global:
   # is the master).  All layers in THIS config are reordered to match.
   # field_order_ref: "/path/to/reference_config.yaml"
 
-  # Fields stamped on every feature regardless of layer
+  # Optional: reusable layer templates — reference with `use: template_name`
+  # layer_library:
+  #   line_defaults:
+  #     geometry:    line
+  #     match_mode:  exact
+  #     locked:      false
+
+  # Fields stamped on every feature regardless of layer.
+  # inject_position: first (default) | last | after:FieldName
+  # field_overrides: always stamp these, layer fields cannot override
+  # exclude_fields:  never inject these on any layer
   common_fields:
     Plant_Name:   "My Solar Plant"
     Country:      "India"
     State:        "Rajasthan"
     District:     "Jaisalmer"
     Jurisdiction: "Within Project Limits"
+    # inject_position: first
+    # field_overrides:
+    #   Prepared_By: "GIS Team"
+    # exclude_fields:
+    #   - Jurisdiction
 
   # Fields left null at extraction time — filled later from asset management system
   deferred_fields:
@@ -108,6 +133,10 @@ layers:
     geometry:     polygon
     code:         "BL"
     output:       "block_boundaries.geojson"
+    # Optional: warn if extracted count is outside expected range
+    expect:
+      min_features: 1
+      # max_features: 100
     fields:
       Code:              "SP_P1_BL"
       Classification:    "Block Boundaries"
@@ -181,7 +210,15 @@ layers:
       Code:           "SP_P1_ST"
       Classification: "Solar Tracker"
       Sub_Plot:       {from_merge_source: sub_plot}
-      Block_No:       {spatial_join: primary}
+      # resolver chain: try block attribute first, fall back to spatial join
+      Block_No:
+        resolver:
+          - type: from_attr
+            tag:  BLOCKNO
+          - type: spatial_join
+            source: primary
+          - type: fallback
+            value: null
       Connection_ID:  {auto_sequence: true}
       Tracker_Type:   {from_attr: "TYPE"}      # read AutoCAD attribute tag "TYPE"
       Capacity_kWp:   {from_attr: "CAPACITY"}

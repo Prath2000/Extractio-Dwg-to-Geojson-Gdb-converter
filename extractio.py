@@ -257,16 +257,48 @@ def _resolve_dwg_paths(cfg, base_dir):
 def _merge_common_fields(cfg):
     """Merge global.common_fields as the base into every layer's fields dict.
 
-    Layer-specific fields override common ones. This runs at config load time
-    so the rest of the executor never needs to know about common_fields — it
-    just sees a fully-resolved fields dict on each layer.
+    Supports control keys inside common_fields:
+      inject_position: first | last | after:FieldName  (default: first)
+      field_overrides: {Field: value}  — always stamp, layer cannot override
+      exclude_fields:  [Field, ...]    — never inject on any layer
     """
-    common = cfg.get("global", {}).get("common_fields", {})
-    if not common:
+    g_cf = cfg.get("global", {}).get("common_fields", {})
+    if not g_cf:
         return
+
+    inject_pos = g_cf.get("inject_position", "first")
+    overrides  = g_cf.get("field_overrides", {}) or {}
+    excludes   = set(g_cf.get("exclude_fields", []) or [])
+    common     = {k: v for k, v in g_cf.items()
+                  if k not in ("inject_position", "field_overrides", "exclude_fields")}
+    filtered   = {k: v for k, v in common.items() if k not in excludes}
+
     for layer in cfg.get("layers", []):
         layer_fields = layer.get("fields") or {}
-        layer["fields"] = {**common, **layer_fields}
+
+        if inject_pos == "last":
+            merged = {**layer_fields,
+                      **{k: v for k, v in filtered.items() if k not in layer_fields}}
+        elif isinstance(inject_pos, str) and inject_pos.startswith("after:"):
+            anchor = inject_pos[len("after:"):]
+            merged = {}
+            inserted = False
+            for k, v in layer_fields.items():
+                merged[k] = v
+                if k == anchor and not inserted:
+                    for ck, cv in filtered.items():
+                        if ck not in layer_fields:
+                            merged[ck] = cv
+                    inserted = True
+            if not inserted:
+                for ck, cv in filtered.items():
+                    if ck not in merged:
+                        merged[ck] = cv
+        else:  # "first" (default)
+            merged = {**filtered, **layer_fields}
+
+        merged.update(overrides)
+        layer["fields"] = merged
 
 
 def _load_field_order_ref(cfg, base_dir):
@@ -317,11 +349,88 @@ def _apply_field_order(cfg, field_order):
         layer["fields"] = reordered
 
 
+def _load_dotenv(base_dir):
+    """Read .env from base_dir; return {VAR: value} dict (does not mutate os.environ)."""
+    env_path = os.path.join(base_dir, ".env")
+    env_vars = {}
+    if not os.path.exists(env_path):
+        return env_vars
+    try:
+        with open(env_path, encoding="utf-8") as _f:
+            for line in _f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, _, v = line.partition("=")
+                env_vars[k.strip()] = v.strip().strip('"').strip("'")
+    except Exception as _e:
+        Logger.warn(f".env read error: {_e}")
+    return env_vars
+
+
+def _substitute_env_vars(text, env_vars):
+    """Replace $VAR and ${VAR} in YAML text with values from env_vars or os.environ."""
+    def _repl(m):
+        name = m.group(1) or m.group(2)
+        return env_vars.get(name, os.environ.get(name, m.group(0)))
+    return re.sub(r'\$\{(\w+)\}|\$(\w+)', _repl, text)
+
+
+def _deep_merge(base, override):
+    """Recursively merge override into a copy of base. override wins on conflicts."""
+    result = dict(base)
+    for k, v in override.items():
+        if k in result and isinstance(result[k], dict) and isinstance(v, dict):
+            result[k] = _deep_merge(result[k], v)
+        else:
+            result[k] = v
+    return result
+
+
+def _expand_layer_library(cfg):
+    """Expand layers that reference a library entry via `use: template_name`."""
+    library = cfg.get("global", {}).get("layer_library", {})
+    if not library:
+        return
+    import copy
+    expanded = []
+    for layer in cfg.get("layers", []):
+        use = layer.get("use")
+        if use:
+            template = library.get(use)
+            if template is None:
+                Logger.warn(f"layer_library entry '{use}' not found — using layer as-is")
+                expanded.append(layer)
+            else:
+                merged = _deep_merge(copy.deepcopy(template), layer)
+                merged.pop("use", None)
+                expanded.append(merged)
+        else:
+            expanded.append(layer)
+    cfg["layers"] = expanded
+
+
 def load_config(path):
-    with open(path, "r", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
     base_dir = os.path.dirname(os.path.abspath(path))
+    env_vars = _load_dotenv(base_dir)
+
+    with open(path, "r", encoding="utf-8") as f:
+        raw = f.read()
+    if env_vars or any(k in raw for k in ("$", )):
+        raw = _substitute_env_vars(raw, env_vars)
+
+    cfg = yaml.safe_load(raw) or {}
+
+    # Config inheritance: child overrides parent
+    parent_path = cfg.pop("inherits", None)
+    if parent_path:
+        full_parent = (parent_path if os.path.isabs(parent_path)
+                       else os.path.join(base_dir, parent_path))
+        parent_cfg = load_config(full_parent)
+        cfg = _deep_merge(parent_cfg, cfg)
+
     _resolve_dwg_paths(cfg, base_dir)
+    _expand_layer_library(cfg)
     _merge_common_fields(cfg)
     field_order = _load_field_order_ref(cfg, base_dir)
     _apply_field_order(cfg, field_order)
@@ -1756,6 +1865,31 @@ class FieldEngine:
 
         return None
 
+    def _resolve_chain(self, resolvers, fn, pts, geom_type, _ct, raw_props, layer_cfg, spatial):
+        """Walk a resolver list; return first non-null/non-empty result."""
+        for res in resolvers:
+            rtype = res.get("type", "")
+            val   = None
+            if rtype == "from_attr":
+                tag = str(res.get("tag", fn)).upper()
+                val = raw_props.get(tag, raw_props.get(res.get("tag", fn)))
+            elif rtype == "calculate":
+                val = self.calculate(res.get("name", ""), pts, geom_type)
+            elif rtype == "spatial_join":
+                src = res.get("source", "primary")
+                bc  = self.global_cfg.get("block_no", {}).get(f"{src}_source", {})
+                val = spatial.nearest(_ct, bc.get("from_layer", ""), bc.get("from_field", ""))
+            elif rtype == "from_config":
+                val = self.global_cfg.get(res.get("key", ""))
+            elif rtype == "from_merge_source":
+                key = res.get("key", "")
+                val = raw_props.get(f"_ms_{key}") or None
+            elif rtype == "fallback":
+                val = res.get("value")
+            if val is not None and val not in ("", " "):
+                return val
+        return None
+
     def resolve(self, layer_cfg, raw_props, pts, geom_type, seq, spatial):
         """
         Two-pass field resolution in strict YAML field order.
@@ -1791,7 +1925,11 @@ class FieldEngine:
 
             elif isinstance(fc, dict):
 
-                if fc.get("from_dwg_name"):
+                if "resolver" in fc:
+                    props[fn] = self._resolve_chain(
+                        fc["resolver"], fn, pts, geom_type, _ct, raw_props, layer_cfg, spatial)
+
+                elif fc.get("from_dwg_name"):
                     _plot = self.get_plot()
                     # If the DWG filename already encodes a sub-plot suffix
                     # (lowercase letter at end, e.g. 'A9a', 'A9b'), trust it.
@@ -2793,6 +2931,25 @@ def derive_zone_boundary_from_reference(bb_feats, pb_cfg, output_dir, crs="EPSG:
     return features
 
 
+def _check_expect(layer_cfg, features, layer_name):
+    """Log pass/fail for expect: min_features / max_features declared in the layer config."""
+    expect = layer_cfg.get("expect")
+    if not expect:
+        return
+    n  = len(features)
+    ok = True
+    mn = expect.get("min_features")
+    mx = expect.get("max_features")
+    if mn is not None and n < mn:
+        Logger.warn(f"  EXPECT FAIL: '{layer_name}' has {n} features  (min: {mn})")
+        ok = False
+    if mx is not None and n > mx:
+        Logger.warn(f"  EXPECT FAIL: '{layer_name}' has {n} features  (max: {mx})")
+        ok = False
+    if ok and (mn is not None or mx is not None):
+        Logger.ok(f"  expect: OK  ({n} features)")
+
+
 def write_geojson(features, output_path, crs="EPSG:32642"):
     out_dir = os.path.dirname(output_path)
     if out_dir:
@@ -2965,6 +3122,27 @@ def select_layers(layers):
 # VERSION CONTROLLER  (Feature 1)
 # ============================================================
 
+def _summarize_resolved_config(cfg):
+    """Return a JSON-safe summary of the fully resolved config for version tracking."""
+    g = cfg.get("global", {})
+    return {
+        "project_name": g.get("project_name", ""),
+        "crs":          g.get("crs", ""),
+        "output_dir":   g.get("output_dir", ""),
+        "layers": [
+            {
+                "name":         l.get("name", ""),
+                "source_layer": l.get("source_layer", ""),
+                "geometry":     l.get("geometry", ""),
+                "code":         l.get("code", ""),
+                "locked":       l.get("locked", False),
+                "output":       l.get("output", ""),
+            }
+            for l in cfg.get("layers", [])
+        ],
+    }
+
+
 def _ensure_gitignore(config_path):
     """Walk up from config dir and add .cad_tract_versions/ to nearest .gitignore."""
     d = _Path(config_path).parent
@@ -3026,11 +3204,12 @@ class VersionController:
         diff = self._compute_diff(prev, layers_run)
 
         manifest = {
-            "version":     N,
-            "timestamp":   _datetime.now().isoformat(),
-            "config_file": str(config_path),
-            "layers":      layers_run,
-            "diff":        diff,
+            "version":         N,
+            "timestamp":       _datetime.now().isoformat(),
+            "config_file":     str(config_path),
+            "layers":          layers_run,
+            "diff":            diff,
+            "resolved_config": _summarize_resolved_config(cfg),
         }
         run_file = self.versions_dir / f"run_{ts}_pid{pid}.json"
         run_file.write_text(json.dumps(manifest, indent=2, ensure_ascii=False))
@@ -4965,6 +5144,7 @@ def main():
             report.append((name, len(features), "\u26a0  Blocked — locked"))
         else:
             write_geojson(features, out, crs=_crs)
+            _check_expect(layer_cfg, features, name)
             report.append((name, len(features), "\u2713  OK"))
 
     # Feature 1: save version manifest after all layers complete
