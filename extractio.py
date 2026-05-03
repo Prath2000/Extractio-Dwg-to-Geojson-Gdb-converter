@@ -4413,8 +4413,10 @@ class LLMYAMLBuilder:
 def main():
     import time as _time
     parser = argparse.ArgumentParser(
-        description="DWG to GeoJSON Executor",
+        description="DWG to GeoJSON/GDB Executor",
         epilog="Config is auto-detected from the script folder — no need to type it.")
+    parser.add_argument("--version", action="version",
+                        version="extractio 0.1.1 — by Prathamesh Athavale")
     parser.add_argument("config", nargs="?", default=None,
                         help="Path to YAML config (optional — auto-detected if omitted)")
     parser.add_argument("--layers", "-l", nargs="*")
