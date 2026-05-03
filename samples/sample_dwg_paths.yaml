@@ -1,23 +1,19 @@
 # DWG Paths Registry
 # -------------------
-# Maps short aliases to absolute file paths.
-# Aliases used here must match the keys in source_dwgs: in your config.
+# Maps short alias names to absolute file paths.
+# Alias keys here must match the keys used in source_dwgs: in your config.
 #
-# THIS FILE IS GITIGNORED — it contains machine-specific paths.
-# Copy this file to dwg_paths.yaml and fill in the real paths for your project.
+# THIS FILE IS GITIGNORED — it contains machine-specific absolute paths.
+# Copy this file to dwg_paths.yaml and fill in your real paths.
 # Never commit dwg_paths.yaml.
 #
 # Format:
 #   alias: "D:/absolute/path/to/file.dwg"
-#   alias: null      # null = file not yet received; that DWG is skipped with a warning
+#   alias: null      # null = file not yet received; skipped with a warning at runtime
 
-# ── Zone 1 layout DWGs ──────────────────────────────────────────────────────────
-layout_z1a: "D:/Projects/MyProject/CAD/Z1/Layout/Z1a-Layout-R1.dwg"  # [EDIT]
-layout_z1b: "D:/Projects/MyProject/CAD/Z1/Layout/Z1b-Layout-R1.dwg"  # [EDIT]
+# [EDIT] Replace aliases and paths with your own DWG files.
 
-# ── Routes / networks ───────────────────────────────────────────────────────────
-routes_z1:  "D:/Projects/MyProject/CAD/Z1/Routes/Z1-Routes-R1.dwg"   # [EDIT]
-
-# ── Additional DWGs (add as needed) ─────────────────────────────────────────────
-# layout_z2a: "D:/Projects/MyProject/CAD/Z2/Layout/Z2a-Layout-R1.dwg"
-# boundary:   null   # not yet received
+drawing_a: "D:/Projects/MyProject/CAD/Drawing-A.dwg"   # [EDIT]
+drawing_b: "D:/Projects/MyProject/CAD/Drawing-B.dwg"   # [EDIT]
+drawing_c: "D:/Projects/MyProject/CAD/Drawing-C.dwg"   # [EDIT]
+# drawing_d: null                                       # not yet received

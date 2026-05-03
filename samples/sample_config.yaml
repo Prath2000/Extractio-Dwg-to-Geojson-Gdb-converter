@@ -1,13 +1,13 @@
 # ============================================================
 # extractio — Sample Configuration
 # ============================================================
-# Copy this file to config.yaml and fill in all values marked
-# with [EDIT].  Everything else is working syntax you can keep,
-# remove, or extend.
+# Copy this file to config.yaml and replace every value that
+# is marked [EDIT] with your own project data.
+# Everything else is working syntax you can keep, remove, or extend.
 #
 # DWG aliases (short names → file paths) live in dwg_paths.yaml.
-# That file is gitignored because it contains machine-specific
-# absolute paths.  Copy sample_dwg_paths.yaml to get started.
+# That file is gitignored because it contains machine-specific paths.
+# Copy sample_dwg_paths.yaml to get started.
 #
 # Advanced features quick-reference:
 #   inherits: base.yaml           — merge a parent config (child wins)
@@ -21,19 +21,19 @@
 # ============================================================
 
 global:
-  project_name: MyProject_Z1            # [EDIT] shown in version labels
-  crs: "EPSG:32632"                     # [EDIT] UTM zone for your area
-  output_dir: "./outputs"               # [EDIT] created automatically
+  project_name: MyProject               # [EDIT]
+  crs: "EPSG:32632"                     # [EDIT] UTM EPSG code for your area
+  output_dir: "./outputs"               # [EDIT] folder created automatically
 
-  # Keeps machine-specific paths out of this file.
+  # Keeps machine-specific file paths out of this config.
   dwg_paths_file: dwg_paths.yaml
 
   # DWG aliases referenced by layers below.
-  # List form: paths are resolved from dwg_paths_file.
+  # These keys must exist in dwg_paths.yaml.
   source_dwgs:
-    - layout_z1a
-    - layout_z1b
-    - routes_z1
+    - drawing_a                         # [EDIT] replace with your DWG alias names
+    - drawing_b                         # [EDIT]
+    - drawing_c                         # [EDIT] remove if not needed
 
   # Optional: reorder all layer field lists to match a reference config.
   # field_order_ref: "/path/to/reference_config.yaml"
@@ -46,7 +46,7 @@ global:
   #     locked:     false
 
   # Fields stamped on every feature on every layer automatically.
-  # Layer-specific fields: sections override these.
+  # Layer-level fields: override these per-layer.
   # inject_position: first (default) | last | after:FieldName
   # field_overrides: always stamp — layer fields cannot override
   # exclude_fields:  never inject these on any layer
@@ -54,18 +54,17 @@ global:
     Project_Name: "My Project"          # [EDIT]
     Organisation: "My Organisation"     # [EDIT]
     Prepared_By:  "GIS Team"            # [EDIT]
-    Status:       "Draft"
+    Status:       "Draft"               # [EDIT]
     # inject_position: first
     # field_overrides:
     #   Status: "As-Built"
     # exclude_fields:
     #   - Prepared_By
 
-  # Fields left null at extraction time — filled later from an external system.
+  # Fields left null at extraction time — filled from an external system later.
   deferred_fields:
-    - Verified_By
+    - Verified_By                       # [EDIT] list any fields to defer
     - Approved_By
-    - Asset_ID_External
 
   # Named geometry calculations — reference in any layer with {calculate: <name>}
   calculated_fields:
@@ -78,20 +77,20 @@ global:
   # Auto-numbering pattern for Connection_ID on every feature.
   # Available vars: {plot_name}  {code}  {seq:02d}
   connection_id:
-    pattern: "PRJ_{plot_name}_{code}_{seq:02d}"   # [EDIT prefix]
+    pattern: "{plot_name}_{code}_{seq:02d}"   # [EDIT] add a prefix if needed
 
-  # Spatial reference config — fixed internal key "block_no".
+  # Spatial reference config — fixed internal key name "block_no".
   # primary_source:   read by {spatial_join: primary}
   # secondary_source: read by {spatial_join: secondary}
   block_no:
     primary_source:
-      from_dwg:   [layout_z1a, layout_z1b]         # [EDIT] DWG aliases to scan
-      from_layer: "ZONE-LABELS"                     # [EDIT] CAD layer with text labels
-      fallbacks:  ["Zone Labels", "ZONE_LABELS"]    # alternate layer name spellings
+      from_dwg:   [drawing_a, drawing_b]      # [EDIT] DWG aliases that hold the labels
+      from_layer: "ZONE-LABELS"               # [EDIT] CAD layer containing text labels
+      fallbacks:  ["Zone Labels", "LABELS"]   # [EDIT] alternate spellings to try
       from_field: "Contents"
       method:     nearest
     secondary_source:
-      from_layer: "Zone Boundaries"                 # must match a layer name: below
+      from_layer: "Zone Boundaries"           # must match a layer name: below exactly
       from_field: "Zone_ID"
       method:     nearest
 
@@ -100,200 +99,193 @@ global:
 # LAYERS
 # ============================================================
 # Each entry produces one GeoJSON file.
-# Run order matches the YAML list order.
+# Layers run in YAML list order.
 # Locked layers are skipped during --run all.
 # ============================================================
 
 layers:
 
   # ----------------------------------------------------------
-  # 1. ZONE BOUNDARIES  (polygon — spatial reference)
+  # 1. ZONE BOUNDARIES  (polygon — spatial reference layer)
   #
-  # The spatial reference layer is loaded first.  Its polygons
-  # form the zone grid used by spatial_join on all other layers.
-  # role: spatial_reference must appear on exactly one layer.
+  # role: spatial_reference marks this as the zone grid.
+  # It is loaded first; all other layers use it for spatial joins.
+  # Exactly one layer should carry this role.
   #
-  # merge_sources combines polygons from multiple DWGs into
-  # one output file, tagging each feature with its sub_plot.
+  # merge_sources pulls polygons from multiple DWGs into one
+  # output file. Each source gets a sub_plot label on its features.
   # ----------------------------------------------------------
-  - name:         "Zone Boundaries"
-    role:         spatial_reference     # enables zone join cache + site boundary dissolve
+  - name:         "Zone Boundaries"    # [EDIT] your layer name
+    role:         spatial_reference
     locked:       false
-    cli_aliases:  ["zb", "zones"]
-    source_dwg:   layout_z1a           # [EDIT] used for pre-flight layer name validation
+    cli_aliases:  ["zb", "zones"]      # [EDIT] short aliases for --layers / --unlock
+    source_dwg:   drawing_a            # [EDIT] used for pre-flight name validation
     source_layer: "ZONE-BOUNDARY"      # [EDIT] exact AutoCAD layer name
     merge_sources:
-      - source_dwg:   layout_z1a
-        sub_plot:     "Z1a"            # [EDIT] label stamped on features from this DWG
-        source_layer: "ZONE-BOUNDARY"
-        fallbacks:    ["ZONE_BOUNDARY", "Zone Boundary", "ZONES"]
-      - source_dwg:   layout_z1b
-        sub_plot:     "Z1b"            # [EDIT]
-        source_layer: "ZONE-BOUNDARY"
-        fallbacks:    ["ZONE_BOUNDARY", "Zone Boundary", "ZONES"]
+      - source_dwg:   drawing_a
+        sub_plot:     "A"              # [EDIT] label for features from this DWG
+        source_layer: "ZONE-BOUNDARY"  # [EDIT]
+        fallbacks:    ["ZONE_BOUNDARY", "Zone Boundary"]  # [EDIT] alternate names
+      - source_dwg:   drawing_b
+        sub_plot:     "B"              # [EDIT]
+        source_layer: "ZONE-BOUNDARY"  # [EDIT]
+        fallbacks:    ["ZONE_BOUNDARY", "Zone Boundary"]
     match_mode:   exact
     geometry:     polygon
-    code:         "ZB"
+    code:         "ZB"                 # [EDIT] short code used in Connection_ID
     output:       "zone_boundaries.geojson"
     expect:
-      min_features: 1                  # warn if nothing was extracted
+      min_features: 1                  # warn if extraction returned nothing
     fields:
-      Code:           "PRJ_Z1_ZB"      # [EDIT]
-      Classification: "Zone Boundaries"
-      Sub_Plot:       {from_merge_source: sub_plot}
-      Zone_ID:        {spatial_join: primary}
+      # ── Fields you define. Names and values are entirely yours. ──
+      Code:           null             # [EDIT] e.g. a static reference code string
+      Category:       "Zone"           # [EDIT] or remove
+      Sub_Plot:       {from_merge_source: sub_plot}    # label from merge_sources above
+      Zone_ID:        {spatial_join: primary}          # stamped from text labels
       Area_Ha:        {calculate: Area_Ha}
-      Area_Sqm:       {calculate: Area_Sqm}
       Perimeter_Km:   {calculate: Perimeter_Km}
-      Owner:          null
-      Remarks:        null
+      Owner:          null             # [EDIT] or remove
+      Remarks:        null             # [EDIT] or remove
 
   # ----------------------------------------------------------
-  # 2. SITE BOUNDARY  (polygon — derived by dissolving Layer 1)
+  # 2. SITE BOUNDARY  (polygon — dissolved from Layer 1)
   #
   # derive_from: spatial_reference dissolves the outer shell of
-  # Zone Boundary polygons — no separate DWG source needed.
-  # One dissolved polygon is produced per unique sub_plot value.
-  # Requires: pip install shapely
+  # Zone Boundary polygons. No separate DWG source is needed.
+  # One dissolved polygon is produced per unique sub_plot.
+  # Requires:  pip install shapely
   # ----------------------------------------------------------
-  - name:         "Site Boundary"
+  - name:         "Site Boundary"      # [EDIT]
     derive_from:  spatial_reference
     locked:       false
     cli_aliases:  ["sb", "site"]
     merge_sources:
-      - source_dwg:   layout_z1a
-        sub_plot:     "Z1a"
+      - source_dwg:   drawing_a
+        sub_plot:     "A"
         source_layer: "ZONE-BOUNDARY"
-      - source_dwg:   layout_z1b
-        sub_plot:     "Z1b"
+      - source_dwg:   drawing_b
+        sub_plot:     "B"
         source_layer: "ZONE-BOUNDARY"
     geometry:     polygon
     code:         "SB"
     output:       "site_boundary.geojson"
     fields:
-      Code:           "PRJ_Z1_SB"
-      Classification: "Site Boundary"
+      Code:           null             # [EDIT]
+      Category:       "Site"           # [EDIT] or remove
       Area_Ha:        {calculate: Area_Ha}
       Perimeter_Km:   {calculate: Perimeter_Km}
       Owner:          null
       Remarks:        null
 
   # ----------------------------------------------------------
-  # 3. ASSETS  (point — INSERT block with attributes)
+  # 3. POINT LAYER  (point — INSERT block entities)
   #
-  # geometry_params.only_insert: skip text/POINT entities on
-  # the same layer; accept only block INSERT entities.
-  # geometry_params.block_name: accept only INSERTs whose block
-  # definition name matches this string (leave blank for any).
+  # geometry_params.only_insert: accept only INSERT (block) entities;
+  # skip any TEXT or POINT entities on the same CAD layer.
+  # geometry_params.block_name: filter by block definition name
+  # (leave blank / remove to accept any INSERT on the layer).
   #
-  # from_attr reads a named attribute tag from each block.
-  # resolver: tries multiple sources in order; first non-null wins.
+  # from_attr reads a named attribute tag value from each block.
+  # resolver: walks a list of sources and returns the first non-null.
   # ----------------------------------------------------------
-  - name:         "Assets"
+  - name:         "Point Layer"        # [EDIT] e.g. "Equipment", "Structures"
     locked:       false
-    cli_aliases:  ["as", "assets"]
-    source_dwg:   layout_z1a           # [EDIT]
-    source_layer: "ASSET-SYM"         # [EDIT] exact AutoCAD layer name
+    cli_aliases:  ["pts", "points"]    # [EDIT]
+    source_dwg:   drawing_a            # [EDIT]
+    source_layer: "POINT-LAYER"        # [EDIT] exact AutoCAD layer name
     merge_sources:
-      - source_dwg:   layout_z1a
-        sub_plot:     "Z1a"
-        source_layer: "ASSET-SYM"
-      - source_dwg:   layout_z1b
-        sub_plot:     "Z1b"
-        source_layer: "ASSET-SYM"
+      - source_dwg:   drawing_a
+        sub_plot:     "A"
+        source_layer: "POINT-LAYER"    # [EDIT]
+      - source_dwg:   drawing_b
+        sub_plot:     "B"
+        source_layer: "POINT-LAYER"    # [EDIT]
     match_mode:   exact
     geometry:     point
     geometry_params:
       only_insert: true
-      block_name:  "ASSET_BLOCK"       # [EDIT] or remove to accept any INSERT
-    code:         "AS"
-    output:       "assets.geojson"
+      block_name:  "BLOCK_NAME"        # [EDIT] or remove to accept any INSERT
+    code:         "PT"                 # [EDIT]
+    output:       "point_layer.geojson"
     expect:
       min_features: 1
     fields:
-      Code:           "PRJ_Z1_AS"
-      Classification: "Assets"
-      Sub_Plot:       {from_merge_source: sub_plot}
-      # resolver chain: try block attribute first, fall back to spatial join
+      Code:       null                 # [EDIT]
+      Category:   "Point"             # [EDIT]
+      Sub_Plot:   {from_merge_source: sub_plot}
+      # resolver chain: try a block attribute first, fall back to spatial join
       Zone_ID:
         resolver:
           - type: from_attr
-            tag:  ZONE_ID              # [EDIT] attribute tag name in AutoCAD block
+            tag:  ZONE_TAG             # [EDIT] attribute tag name in the CAD block
           - type: spatial_join
             source: primary
           - type: fallback
             value: null
-      Connection_ID:  {auto_sequence: true}
-      Asset_Type:     {from_attr: "TYPE"}      # [EDIT] block attribute tag name
-      Asset_Ref:      {from_attr: "REF"}       # [EDIT]
-      Capacity:       {from_attr: "CAPACITY"}  # [EDIT] remove if not applicable
-      Install_Date:   null
-      Remarks:        null
+      # Block attribute fields — tag name (right) comes from AutoCAD block definition
+      Attribute_1:  {from_attr: "TAG_1"}   # [EDIT] field name and tag name
+      Attribute_2:  {from_attr: "TAG_2"}   # [EDIT]
+      Attribute_3:  {from_attr: "TAG_3"}   # [EDIT] remove if not needed
+      Notes:        null
 
   # ----------------------------------------------------------
-  # 4. ROUTES  (line — LWPOLYLINE / LINE entities)
+  # 4. LINE LAYER  (line — LWPOLYLINE / LINE entities)
   #
-  # merge_sources pulls from two DWGs and tags each feature
-  # with its sub_plot.  fallbacks handle alternate layer names
+  # merge_sources pulls from multiple DWGs and tags each feature
+  # with its sub_plot. fallbacks handle alternate layer names
   # across DWG revisions.
   # ----------------------------------------------------------
-  - name:         "Routes"
+  - name:         "Line Layer"         # [EDIT] e.g. "Routes", "Cables", "Pipelines"
     locked:       false
-    cli_aliases:  ["rt", "routes"]
-    source_dwg:   routes_z1            # [EDIT]
-    source_layer: "ROUTE-CL"          # [EDIT] exact AutoCAD layer name
+    cli_aliases:  ["ln", "lines"]      # [EDIT]
+    source_dwg:   drawing_c            # [EDIT]
+    source_layer: "LINE-LAYER"         # [EDIT] exact AutoCAD layer name
     merge_sources:
-      - source_dwg:   routes_z1
-        sub_plot:     "Z1a"
-        sub_type:     "PRIMARY"
-        source_layer: "ROUTE-CL"
-        fallbacks:    ["ROUTE_CL", "ROUTE-CENTRE"]
-      - source_dwg:   routes_z1
-        sub_plot:     "Z1b"
-        sub_type:     "PRIMARY"
-        source_layer: "ROUTE-CL"
+      - source_dwg:   drawing_c
+        sub_plot:     "A"
+        source_layer: "LINE-LAYER"     # [EDIT]
+        fallbacks:    ["LINE_LAYER"]   # [EDIT] alternate spellings
+      - source_dwg:   drawing_c
+        sub_plot:     "B"
+        source_layer: "LINE-LAYER"     # [EDIT]
     match_mode:   exact
     geometry:     line
-    code:         "RT"
-    output:       "routes.geojson"
+    code:         "LN"                 # [EDIT]
+    output:       "line_layer.geojson"
     fields:
-      Code:           "PRJ_Z1_RT"
-      Classification: "Routes"
-      Sub_Plot:       {from_merge_source: sub_plot}
-      Zone_ID:        {spatial_join: primary}
-      Connection_ID:  {auto_sequence: true}
-      Route_Type:     {from_merge_source: layer_subtype}
-      Length_m:       {calculate: Length_m}
-      Length_Km:      {calculate: Length_Km}
-      Surface:        null
-      Remarks:        null
+      Code:       null                 # [EDIT]
+      Category:   "Line"              # [EDIT]
+      Sub_Plot:   {from_merge_source: sub_plot}
+      Zone_ID:    {spatial_join: primary}
+      Sub_Type:   {from_merge_source: layer_subtype}   # detected from layer name suffix
+      Length_m:   {calculate: Length_m}
+      Length_Km:  {calculate: Length_Km}
+      Notes:      null
 
   # ----------------------------------------------------------
-  # 5. AREAS  (polygon — prefix match captures multiple sub-types)
+  # 5. POLYGON LAYER  (polygon — prefix match, multiple sub-types)
   #
   # match_mode: prefix captures all CAD layers whose name starts
-  # with "AREA-OUTLINE".  Use merge_sources to split sub-types
-  # (e.g. AREA-OUTLINE-MAJOR, AREA-OUTLINE-MINOR) and stamp each
-  # with its own code and sub_classification.
+  # with source_layer (e.g. "POLY-LAYER" captures POLY-LAYER-A,
+  # POLY-LAYER-B, etc.). from_merge_source: layer_subtype stamps
+  # the suffix (A, B, ...) onto each feature automatically.
   # ----------------------------------------------------------
-  - name:         "Areas"
+  - name:         "Polygon Layer"      # [EDIT] e.g. "Areas", "Zones", "Parcels"
     locked:       false
-    cli_aliases:  ["ar", "areas"]
-    source_dwg:   layout_z1a           # [EDIT]
-    source_layer: "AREA-OUTLINE"       # [EDIT] prefix — captures AREA-OUTLINE-*, etc.
+    cli_aliases:  ["pl", "polys"]      # [EDIT]
+    source_dwg:   drawing_a            # [EDIT]
+    source_layer: "POLY-LAYER"         # [EDIT] prefix — captures POLY-LAYER-*, etc.
     match_mode:   prefix
     geometry:     polygon
-    code:         "AR"
-    output:       "areas.geojson"
+    code:         "PL"                 # [EDIT]
+    output:       "polygon_layer.geojson"
     # geometry_params:
-    #   min_area_sqm: 10.0             # uncomment to skip small annotation polygons
+    #   min_area_sqm: 10.0             # uncomment to filter out small annotation polygons
     fields:
-      Code:           "PRJ_Z1_AR"
-      Classification: "Areas"
-      Zone_ID:        {spatial_join: secondary}
-      Connection_ID:  {auto_sequence: true}
-      Area_Type:      {from_merge_source: layer_subtype}  # detected from layer suffix
-      Area_Ha:        {calculate: Area_Ha}
-      Perimeter_Km:   {calculate: Perimeter_Km}
-      Owner:          null
-      Remarks:        null
+      Code:       null                 # [EDIT]
+      Category:   "Polygon"           # [EDIT]
+      Zone_ID:    {spatial_join: secondary}
+      Sub_Type:   {from_merge_source: layer_subtype}   # detected from layer suffix
+      Area_Ha:    {calculate: Area_Ha}
+      Perimeter_Km: {calculate: Perimeter_Km}
+      Notes:      null
