@@ -1,0 +1,48 @@
+# ── Client config files ──────────────────────────────────────────────────────────
+# DWG paths contain machine-specific absolute paths — never commit these.
+dwg_paths.yaml
+
+# Project-specific YAML configs (keep samples/ committed, ignore real project configs)
+*_config.yaml
+*_config_*.yaml
+tora_config*.yaml
+*_trial.yaml
+config.yaml
+
+# Never ignore the samples directory
+!samples/
+!samples/**
+
+# ── Output files ─────────────────────────────────────────────────────────────────
+outputs/
+*.geojson
+*.gpkg
+
+# ── Version snapshots ────────────────────────────────────────────────────────────
+.cad_tract_versions/
+
+# ── API keys and secrets ─────────────────────────────────────────────────────────
+*.env
+Groq*.txt
+*API Key*.txt
+*api_key*
+
+# ── Python ───────────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# ── Scan / diagnostic artifacts ──────────────────────────────────────────────────
+scan_*.json
+diagnose_*.txt
+
+# ── Client documentation ──────────────────────────────────────────────────────────
+*.docx
+HOW_TO_RUN*.md
+*_WORKFLOW*.txt
+*Summary*.docx

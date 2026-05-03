@@ -1,0 +1,252 @@
+# ============================================================
+# extractio — Sample Configuration
+# ============================================================
+# Copy this file, rename it (e.g. config.yaml), and edit all
+# placeholder values for your project.
+#
+# DWG aliases are resolved from dwg_paths.yaml in the same folder
+# (or set dwg_paths_file to an absolute path).
+# ============================================================
+
+global:
+  project_name: SolarPark_P1          # used in Connection_ID and version labels
+  crs: "EPSG:32643"                   # coordinate reference system of the DWGs
+  output_dir: "./outputs"             # where GeoJSON files are written
+
+  # Optional: resolve DWG aliases from a separate file (keeps paths out of this config)
+  dwg_paths_file: dwg_paths.yaml
+
+  # DWG aliases used by layers below.  Either set paths here or in dwg_paths_file.
+  source_dwgs:
+    - array_layout_P1a
+    - array_layout_P1b
+    - lt_cable_P1
+    - ht_fo_P1a
+    - ht_fo_P1b
+
+  # Optional: canonical field order reference YAML (another config whose field order
+  # is the master).  All layers in THIS config are reordered to match.
+  # field_order_ref: "/path/to/reference_config.yaml"
+
+  # Fields stamped on every feature regardless of layer
+  common_fields:
+    Plant_Name:   "My Solar Plant"
+    Country:      "India"
+    State:        "Rajasthan"
+    District:     "Jaisalmer"
+    Jurisdiction: "Within Project Limits"
+
+  # Fields left null at extraction time — filled later from asset management system
+  deferred_fields:
+    - Development_Status
+    - Development_Year
+    - Operational_Status
+    - Operational_Year
+    - Owned_By
+    - Developed_By
+    - Maintained_By
+
+  # Geometry-derived calculations available to any layer via {calculate: <name>}
+  calculated_fields:
+    Area_Ha:      {formula: area,      unit: hectares, round: 2}
+    Area_Ac:      {formula: area,      unit: acres,    round: 2}
+    Area_Sqm:     {formula: area,      unit: sqm,      round: 2}
+    Perimeter_Km: {formula: perimeter, unit: km,       round: 2}
+    Perimeter_m:  {formula: perimeter, unit: meters,   round: 2}
+    Length_m:     {formula: length,    unit: meters,   round: 2}
+    Length_Km:    {formula: length,    unit: km,       round: 2}
+
+  # How to auto-number features: KP_P1_BL_01 … KP_P1_BL_N
+  connection_id:
+    pattern: "SP_{plot_name}_{code}_{seq:02d}"
+
+  # Block-number spatial join — reads MMS text labels from DWG and assigns to nearest polygon
+  block_no:
+    primary_source:
+      from_dwg:   [array_layout_P1a, array_layout_P1b]
+      from_layer: "MMS Block Numbering"
+      fallbacks:  ["Block Numbering", "MMS Block No"]
+      from_field: "Contents"
+      method:     nearest
+    secondary_source:
+      from_layer: "Block Boundaries"
+      from_field: "Block_No"
+      method:     nearest
+
+
+# ============================================================
+# LAYERS
+# ============================================================
+# Each layer maps one DWG layer → one output GeoJSON file.
+# Locked layers are skipped during extraction (safe to leave running).
+# ============================================================
+
+layers:
+
+  # ----------------------------------------------------------
+  # 1. BLOCK BOUNDARIES  (polygon — spatial reference)
+  # role: spatial_reference marks this as the base layer used
+  # by other layers for spatial joins and dissolved boundaries.
+  # merge_sources merges polygons from multiple DWGs/sub-plots.
+  # ----------------------------------------------------------
+  - name:         "Block Boundaries"
+    role:         spatial_reference       # enables spatial join cache + PB dissolve
+    locked:       false
+    cli_aliases:  ["bb", "block", "blocks"]
+    source_dwg:   array_layout_P1a        # used for pre-flight validation only
+    source_layer: "Boundary-12.5 MW Block"
+    merge_sources:
+      - source_dwg:   array_layout_P1a
+        sub_plot:     "P1a"
+        source_layer: "Boundary-12.5 MW Block"
+        fallbacks:    ["Boundary-12.5MW Block", "Block Boundary", "12.5 MW Block"]
+      - source_dwg:   array_layout_P1b
+        sub_plot:     "P1b"
+        source_layer: "Boundary-12.5 MW Block"
+        fallbacks:    ["Boundary-12.5MW Block", "Block Boundary", "12.5 MW Block"]
+    match_mode:   exact
+    geometry:     polygon
+    code:         "BL"
+    output:       "block_boundaries.geojson"
+    fields:
+      Code:              "SP_P1_BL"
+      Classification:    "Block Boundaries"
+      Sub_Plot:          {from_merge_source: sub_plot}
+      Block_No:          {spatial_join: primary}
+      Total_Capacity_MW: "12.5 MW"
+      Area_Ha:           {calculate: Area_Ha}
+      Area_Ac:           {calculate: Area_Ac}
+      Perimeter_Km:      {calculate: Perimeter_Km}
+      Owned_By:          null
+      Prepared_By:       null
+      Attachment:        null
+
+  # ----------------------------------------------------------
+  # 2. PLOT BOUNDARIES  (polygon — derived by dissolving BB)
+  # derive_from: spatial_reference computes the outer shell of
+  # all Block Boundary polygons; no direct DWG source needed.
+  # One dissolved polygon is produced per unique sub_plot value.
+  # ----------------------------------------------------------
+  - name:         "Plot Boundaries"
+    locked:       false
+    cli_aliases:  ["pb", "plot", "plots"]
+    derive_from:  spatial_reference
+    merge_sources:
+      - source_dwg:   array_layout_P1a
+        sub_plot:     "P1a"
+        source_layer: "Boundary-12.5 MW Block"
+      - source_dwg:   array_layout_P1b
+        sub_plot:     "P1b"
+        source_layer: "Boundary-12.5 MW Block"
+    geometry:     polygon
+    code:         "PB"
+    output:       "plot_boundaries.geojson"
+    fields:
+      Code:              "SP_P1_PB"
+      Classification:    "Plot Boundaries"
+      Total_Plots:       null
+      Total_Blocks:      null
+      Area_Ha:           {calculate: Area_Ha}
+      Area_Ac:           {calculate: Area_Ac}
+      Perimeter_Km:      {calculate: Perimeter_Km}
+      Owned_By:          null
+      Prepared_By:       null
+      Attachment:        null
+
+  # ----------------------------------------------------------
+  # 3. SOLAR TRACKER  (point — INSERT block with attributes)
+  # geometry_params.block_name: only extract INSERTs whose
+  # block definition name matches this string.
+  # ----------------------------------------------------------
+  - name:         "Solar Tracker"
+    locked:       false
+    cli_aliases:  ["st", "tracker"]
+    source_dwg:   array_layout_P1a
+    source_layer: "Solar Tracker"
+    merge_sources:
+      - source_dwg:   array_layout_P1a
+        sub_plot:     "P1a"
+        source_layer: "Solar Tracker"
+      - source_dwg:   array_layout_P1b
+        sub_plot:     "P1b"
+        source_layer: "Solar Tracker"
+    match_mode:   exact
+    geometry:     point
+    geometry_params:
+      only_insert:  true
+      block_name:   "SOLAR_TRACKER"    # leave blank to accept any INSERT on the layer
+    code:         "ST"
+    output:       "solar_tracker.geojson"
+    fields:
+      Code:           "SP_P1_ST"
+      Classification: "Solar Tracker"
+      Sub_Plot:       {from_merge_source: sub_plot}
+      Block_No:       {spatial_join: primary}
+      Connection_ID:  {auto_sequence: true}
+      Tracker_Type:   {from_attr: "TYPE"}      # read AutoCAD attribute tag "TYPE"
+      Capacity_kWp:   {from_attr: "CAPACITY"}
+      Area_Ha:        null
+      Owned_By:       null
+      Attachment:     null
+
+  # ----------------------------------------------------------
+  # 4. HT CABLE TRENCH  (line — LWPOLYLINE / LINE entities)
+  # Line layers support Length_m and Length_Km calculations.
+  # merge_sources pulls from both sub-plot HT cable DWGs.
+  # ----------------------------------------------------------
+  - name:         "HT Cable Trench"
+    locked:       false
+    cli_aliases:  ["ht", "trench", "ht_trench"]
+    source_dwg:   ht_fo_P1a
+    source_layer: "HT-TRENCH-LINE"
+    merge_sources:
+      - source_dwg:   ht_fo_P1a
+        sub_plot:     "P1a"
+        sub_type:     "HT"
+        source_layer: "HT-TRENCH-LINE"
+        fallbacks:    ["HT Trench", "HT_TRENCH"]
+      - source_dwg:   ht_fo_P1b
+        sub_plot:     "P1b"
+        sub_type:     "HT"
+        source_layer: "HT-TRENCH-LINE"
+        fallbacks:    ["HT Trench", "HT_TRENCH"]
+    match_mode:   exact
+    geometry:     line
+    code:         "HTT"
+    output:       "ht_cable_trench.geojson"
+    fields:
+      Code:           "SP_P1_HTT"
+      Classification: "HT Cable Trench"
+      Sub_Plot:       {from_merge_source: sub_plot}
+      Block_No:       {spatial_join: primary}
+      Connection_ID:  {auto_sequence: true}
+      Cable_Type:     "HT"
+      Length_m:       {calculate: Length_m}
+      Length_Km:      {calculate: Length_Km}
+      Owned_By:       null
+      Attachment:     null
+
+  # ----------------------------------------------------------
+  # 5. LT CABLE TRENCH  (line — two sub-types on same layer)
+  # prefix match_mode captures "LT-AC-TRENCH" and "LT-DC-TRENCH"
+  # as separate sub_types; sub_type is written to the AC/DC field.
+  # ----------------------------------------------------------
+  - name:         "LT Cable Trench"
+    locked:       false
+    cli_aliases:  ["lt", "lt_trench"]
+    source_dwg:   lt_cable_P1
+    source_layer: "LT-TRENCH"          # prefix match captures LT-TRENCH-AC, LT-TRENCH-DC, etc.
+    match_mode:   prefix
+    geometry:     line
+    code:         "LTT"
+    output:       "lt_cable_trench.geojson"
+    fields:
+      Code:           "SP_P1_LTT"
+      Classification: "LT Cable Trench"
+      Block_No:       {spatial_join: primary}
+      Connection_ID:  {auto_sequence: true}
+      AC_DC:          {from_merge_source: layer_subtype}  # auto-detected from layer suffix
+      Length_m:       {calculate: Length_m}
+      Length_Km:      {calculate: Length_Km}
+      Owned_By:       null
+      Attachment:     null
