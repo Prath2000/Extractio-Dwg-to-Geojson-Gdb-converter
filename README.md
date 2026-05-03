@@ -1001,7 +1001,7 @@ Linked_Node:
   derive:
     transform:  block_no_to_connection
     from_field: Block_No
-# "A9_BLK03" → "A9-BL03"
+# "Z1_BLK03" → "Z1-BL03"
 ```
 
 ---
@@ -1015,8 +1015,8 @@ Asset_Ref:
   derive:
     transform:  block_no_to_prefixed_connection
     from_field: Block_No
-    prefix:     "KP-"
-# "A9_BLK03" → "KP-A9-BLK03"
+    prefix:     "REF-"
+# "Z1_BLK03" → "REF-Z1-BLK03"
 ```
 
 ---
@@ -1032,7 +1032,7 @@ Seq_No:
     from_field: Connection_ID
     prefix:     "SEQ-"
     pad:        3
-# "A9_PT_07" → "SEQ-007"
+# "Z1_PT_07" → "SEQ-007"
 ```
 
 ---
@@ -1047,7 +1047,7 @@ Parent_Ref:
     transform:  strip_last_segment
     from_field: Connection_ID
     separator:  "_"
-# "A9_ASSET_TYPE_05" → "A9_ASSET"
+# "Z1_ASSET_TYPE_05" → "Z1_ASSET"
 ```
 
 ---
@@ -1079,7 +1079,7 @@ Short_Ref:
     transform:  extract_suffix
     from_field: Block_No
     prefix:     "BL"
-# "A9_BLK05" → "BL05"
+# "Z1_BLK05" → "BL05"
 ```
 
 ---
@@ -1094,7 +1094,7 @@ Doc_Ref:
     transform:  format_reference_id
     from_field: Block_No
     prefix:     "DOC-"
-# Block_No="A9_BLK03" → "DOC-A9-BL-03"
+# Block_No="Z1_BLK03" → "DOC-Z1-BL-03"
 ```
 
 ---
@@ -1108,7 +1108,7 @@ Label:
   derive:
     transform: prepend_plot
     format:    "{plot_no}-{text}"
-# Plot_No="A9", block_text="GATE-01" → "A9-GATE-01"
+# Plot_No="Z1", block_text="NODE-01" → "Z1-NODE-01"
 ```
 
 ---
