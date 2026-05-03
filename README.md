@@ -170,7 +170,7 @@ python yaml_generator.py
 Before filling in your config, find the exact AutoCAD layer names:
 
 ```
-python extractio.py config.yaml --dwg-layers layout_a
+python extractio.py config.yaml --dwg-layers drawing_a
 ```
 
 AutoCAD layer names are case-sensitive. Copy them exactly.
@@ -182,7 +182,7 @@ AutoCAD layer names are case-sensitive. Copy them exactly.
 python launcher.py
 
 # Run specific layers by name (fuzzy match accepted)
-python extractio.py config.yaml --layers "Block Boundaries" "Solar Tracker"
+python extractio.py config.yaml --layers "Zone Boundaries" "Equipment Points"
 
 # Run all unlocked layers
 python extractio.py config.yaml --run all
@@ -197,15 +197,15 @@ python extractio.py config.yaml --list
 
 ```
 # 1. Inspect DWG layer names
-python extractio.py config.yaml --dwg-layers my_dwg_alias
+python extractio.py config.yaml --dwg-layers drawing_a
 
 # 2. Extract and verify the spatial reference layer first
-python extractio.py config.yaml --unlock "Block Boundaries"
-python extractio.py config.yaml --layers "Block Boundaries"
-python extractio.py config.yaml --lock "Block Boundaries"
+python extractio.py config.yaml --unlock "Zone Boundaries"
+python extractio.py config.yaml --layers "Zone Boundaries"
+python extractio.py config.yaml --lock "Zone Boundaries"
 
 # 3. Unlock and run the rest
-python extractio.py config.yaml --unlock "Solar Tracker"
+python extractio.py config.yaml --unlock "Equipment Points"
 python extractio.py config.yaml --run all
 python extractio.py config.yaml --lock-all
 ```
@@ -253,22 +253,22 @@ A config file has two top-level keys:
 global:
   # project-wide settings: CRS, DWG paths, common fields, spatial reference config
   project_name: "My Project"
-  crs: "EPSG:32643"
+  crs: "EPSG:32632"
   output_dir: "./outputs"
   ...
 
 layers:
   # list of layers to extract — one entry per output GeoJSON
-  - name: "Block Boundaries"
+  - name: "Zone Boundaries"
     role: spatial_reference
     geometry: polygon
     ...
 
-  - name: "Solar Tracker"
+  - name: "Equipment Points"
     geometry: point
     ...
 
-  - name: "HT Cable Trench"
+  - name: "Route Lines"
     geometry: line
     ...
 ```
@@ -283,9 +283,9 @@ See [`samples/sample_config.yaml`](samples/sample_config.yaml) for a full workin
 
 ```yaml
 global:
-  project_name: "SolarPark_P1"      # used in version labels
-  crs: "EPSG:32643"                 # output coordinate reference system
-  output_dir: "./outputs"           # created automatically if it doesn't exist
+  project_name: "MyProject"              # used in version labels
+  crs: "EPSG:32632"                      # output coordinate reference system
+  output_dir: "./outputs"                # created automatically if it doesn't exist
 
   # DWG alias file — maps short names to absolute file paths.
   # Keep this file out of git (it contains machine-specific paths).
@@ -293,9 +293,9 @@ global:
 
   # DWG aliases used by layers below. List form: aliases resolved from dwg_paths_file.
   source_dwgs:
-    - array_layout_P1a
-    - array_layout_P1b
-    - lt_cable_P1
+    - drawing_a
+    - drawing_b
+    - drawing_c
 
   # Optional: canonical field order reference (another config whose field order is master).
   # All layers in THIS config are reordered to match.
@@ -304,23 +304,20 @@ global:
   # Fields written to every feature on every layer automatically.
   # Layer-specific fields: sections override these.
   common_fields:
-    Plant_Name:   "My Solar Plant"
-    Country:      "India"
-    State:        "Rajasthan"
-    District:     "Jaisalmer"
-    Jurisdiction: "Within Project Limits"
+    Project_Name: "My Project"
+    Organisation: "My Organisation"
+    Prepared_By:  "GIS Team"
+    Status:       "Draft"
 
   # Fields left null at extraction time — filled later from an asset management system.
   deferred_fields:
-    - Development_Status
-    - Operational_Status
-    - Owned_By
-    - Developed_By
+    - Verified_By
+    - Approved_By
 
   # Named geometry calculations available to any layer via {calculate: <name>}
   calculated_fields:
     Area_Ha:      {formula: area,      unit: hectares, round: 2}
-    Area_Ac:      {formula: area,      unit: acres,    round: 2}
+    Area_Sqm:     {formula: area,      unit: sqm,      round: 2}
     Perimeter_Km: {formula: perimeter, unit: km,       round: 2}
     Length_m:     {formula: length,    unit: meters,   round: 2}
     Length_Km:    {formula: length,    unit: km,       round: 2}
@@ -328,21 +325,21 @@ global:
   # Auto-numbering pattern for Connection_ID.
   # Available vars: {plot_name} {code} {seq:02d}
   connection_id:
-    pattern: "SP_{plot_name}_{code}_{seq:02d}"
+    pattern: "{plot_name}_{code}_{seq:02d}"
 
   # Spatial reference config — fixed internal key name "block_no".
   # primary_source:   used by {spatial_join: primary}
   # secondary_source: used by {spatial_join: secondary}
   block_no:
     primary_source:
-      from_dwg:   [array_layout_P1a, array_layout_P1b]
-      from_layer: "MMS Block Numbering"
-      fallbacks:  ["Block Numbering", "MMS Block No"]
+      from_dwg:   [drawing_a, drawing_b]
+      from_layer: "ZONE-LABELS"
+      fallbacks:  ["Zone Labels", "LABELS"]
       from_field: "Contents"
       method:     nearest
     secondary_source:
-      from_layer: "Block Boundaries"
-      from_field: "Block_No"
+      from_layer: "Zone Boundaries"
+      from_field: "Zone_ID"
       method:     nearest
 ```
 
@@ -418,34 +415,35 @@ Four layer types, distinguished by the presence of `role:` and `derive_from:` ke
 The zone/block grid layer. One per project. Must appear before any layer that uses `spatial_join: primary` or `spatial_join: secondary`. Declare with `role: spatial_reference`.
 
 ```yaml
-- name:         "Block Boundaries"
+- name:         "Zone Boundaries"
   role:         spatial_reference       # enables spatial join cache + boundary dissolve
   locked:       false
-  cli_aliases:  ["bb", "block"]
-  source_dwg:   array_layout_P1a
-  source_layer: "Boundary-12.5 MW Block"
+  cli_aliases:  ["zb", "zones"]
+  source_dwg:   drawing_a
+  source_layer: "ZONE-BOUNDARY"
   merge_sources:
-    - source_dwg:   array_layout_P1a
-      sub_plot:     "P1a"
-      source_layer: "Boundary-12.5 MW Block"
-      fallbacks:    ["Boundary-12.5MW Block", "Block Boundary"]
-    - source_dwg:   array_layout_P1b
-      sub_plot:     "P1b"
-      source_layer: "Boundary-12.5 MW Block"
+    - source_dwg:   drawing_a
+      sub_plot:     "A"
+      source_layer: "ZONE-BOUNDARY"
+      fallbacks:    ["ZONE_BOUNDARY", "Zone Boundary"]
+    - source_dwg:   drawing_b
+      sub_plot:     "B"
+      source_layer: "ZONE-BOUNDARY"
   match_mode:   exact
   geometry:     polygon
-  code:         "BL"
-  output:       "block_boundaries.geojson"
+  code:         "ZB"
+  output:       "zone_boundaries.geojson"
   expect:
     min_features: 1
   fields:
-    Code:           "SP_P1_BL"
-    Classification: "Block Boundaries"
+    Code:           null
+    Category:       "Zone Boundaries"
     Sub_Plot:       {from_merge_source: sub_plot}
-    Block_No:       {spatial_join: primary}
+    Zone_ID:        {spatial_join: primary}
     Area_Ha:        {calculate: Area_Ha}
-    Area_Ac:        {calculate: Area_Ac}
     Perimeter_Km:   {calculate: Perimeter_Km}
+    Owner:          null
+    Remarks:        null
 ```
 
 **Workflow tip:** once extracted and verified, lock this layer. On all subsequent runs extractio loads the GeoJSON from disk instead of re-reading AutoCAD — faster and guarantees consistency with all downstream spatial joins.
@@ -456,29 +454,30 @@ The zone/block grid layer. One per project. Must appear before any layer that us
 
 Computes the dissolved outer shell of the spatial reference polygons. Does not read from AutoCAD — computed from the already-loaded spatial reference features using shapely. Requires `pip install shapely`.
 
-Use this when you want a merged outer boundary for each sub-plot (e.g. one large polygon per plot from many individual block polygons).
+Use this when you want a merged outer boundary for each sub-plot (e.g. one large polygon per plot from many individual zone polygons).
 
 ```yaml
-- name:         "Plot Boundaries"
-  derive_from:  spatial_reference       # dissolves Block Boundaries per sub_plot
+- name:         "Site Boundary"
+  derive_from:  spatial_reference       # dissolves Zone Boundaries per sub_plot
   locked:       false
-  cli_aliases:  ["pb", "plot"]
+  cli_aliases:  ["sb", "site"]
   merge_sources:
-    - source_dwg:   array_layout_P1a
-      sub_plot:     "P1a"
-      source_layer: "Boundary-12.5 MW Block"
-    - source_dwg:   array_layout_P1b
-      sub_plot:     "P1b"
-      source_layer: "Boundary-12.5 MW Block"
+    - source_dwg:   drawing_a
+      sub_plot:     "A"
+      source_layer: "ZONE-BOUNDARY"
+    - source_dwg:   drawing_b
+      sub_plot:     "B"
+      source_layer: "ZONE-BOUNDARY"
   geometry:     polygon
-  code:         "PB"
-  output:       "plot_boundaries.geojson"
+  code:         "SB"
+  output:       "site_boundary.geojson"
   fields:
-    Code:           "SP_P1_PB"
-    Classification: "Plot Boundaries"
+    Code:           null
+    Category:       "Site Boundary"
     Area_Ha:        {calculate: Area_Ha}
-    Area_Ac:        {calculate: Area_Ac}
     Perimeter_Km:   {calculate: Perimeter_Km}
+    Owner:          null
+    Remarks:        null
 ```
 
 ---
@@ -502,33 +501,33 @@ If `geometry:` is omitted, it defaults to `polygon`.
 #### Point layer example
 
 ```yaml
-- name:         "Solar Tracker"
+- name:         "Equipment Points"
   locked:       false
-  cli_aliases:  ["st", "tracker"]
-  source_dwg:   array_layout_P1a
-  source_layer: "Solar Tracker"
+  cli_aliases:  ["pts", "points"]
+  source_dwg:   drawing_a
+  source_layer: "POINT-LAYER"
   merge_sources:
-    - source_dwg:   array_layout_P1a
-      sub_plot:     "P1a"
-      source_layer: "Solar Tracker"
-    - source_dwg:   array_layout_P1b
-      sub_plot:     "P1b"
-      source_layer: "Solar Tracker"
+    - source_dwg:   drawing_a
+      sub_plot:     "A"
+      source_layer: "POINT-LAYER"
+    - source_dwg:   drawing_b
+      sub_plot:     "B"
+      source_layer: "POINT-LAYER"
   match_mode:   exact
   geometry:     point
   geometry_params:
     only_insert: true
-    block_name:  "SOLAR_TRACKER"    # leave blank to accept any INSERT on the layer
-  code:         "ST"
-  output:       "solar_tracker.geojson"
+    block_name:  "POINT_BLOCK"    # leave blank to accept any INSERT on the layer
+  code:         "PT"
+  output:       "equipment_points.geojson"
   fields:
-    Code:           "SP_P1_ST"
-    Classification: "Solar Tracker"
+    Code:           null
+    Category:       "Equipment Points"
     Sub_Plot:       {from_merge_source: sub_plot}
-    Block_No:       {spatial_join: primary}
+    Zone_ID:        {spatial_join: primary}
     Connection_ID:  {auto_sequence: true}
-    Tracker_Type:   {from_attr: "TYPE"}       # AutoCAD attribute tag "TYPE"
-    Capacity_kWp:   {from_attr: "CAPACITY"}
+    Asset_Type:     {from_attr: "TYPE"}       # AutoCAD attribute tag "TYPE"
+    Attribute_1:    {from_attr: "ATTR_1"}
 ```
 
 ---
@@ -536,30 +535,30 @@ If `geometry:` is omitted, it defaults to `polygon`.
 #### Line layer example
 
 ```yaml
-- name:         "HT Cable Trench"
+- name:         "Route Lines"
   locked:       false
-  cli_aliases:  ["ht", "trench"]
-  source_dwg:   ht_fo_P1a
-  source_layer: "HT-TRENCH-LINE"
+  cli_aliases:  ["ln", "lines"]
+  source_dwg:   drawing_c
+  source_layer: "LINE-LAYER"
   merge_sources:
-    - source_dwg:   ht_fo_P1a
-      sub_plot:     "P1a"
-      source_layer: "HT-TRENCH-LINE"
-      fallbacks:    ["HT Trench", "HT_TRENCH"]
-    - source_dwg:   ht_fo_P1b
-      sub_plot:     "P1b"
-      source_layer: "HT-TRENCH-LINE"
+    - source_dwg:   drawing_c
+      sub_plot:     "A"
+      source_layer: "LINE-LAYER"
+      fallbacks:    ["LINE_LAYER", "Line Layer"]
+    - source_dwg:   drawing_c
+      sub_plot:     "B"
+      source_layer: "LINE-LAYER"
   match_mode:   exact
   geometry:     line
-  code:         "HTT"
-  output:       "ht_cable_trench.geojson"
+  code:         "LN"
+  output:       "route_lines.geojson"
   fields:
-    Code:           "SP_P1_HTT"
-    Classification: "HT Cable Trench"
+    Code:           null
+    Category:       "Route Lines"
     Sub_Plot:       {from_merge_source: sub_plot}
-    Block_No:       {spatial_join: primary}
+    Zone_ID:        {spatial_join: primary}
     Connection_ID:  {auto_sequence: true}
-    Cable_Type:     "HT"
+    Sub_Type:       {from_merge_source: layer_subtype}
     Length_m:       {calculate: Length_m}
     Length_Km:      {calculate: Length_Km}
 ```
@@ -569,20 +568,20 @@ If `geometry:` is omitted, it defaults to `polygon`.
 #### Polygon layer example
 
 ```yaml
-- name:         "Site Parcels"
+- name:         "Site Polygons"
   locked:       false
-  source_dwg:   layout_dwg
-  source_layer: "SITE-PARCELS"
+  source_dwg:   drawing_a
+  source_layer: "POLY-LAYER-A"
   match_mode:   exact
   geometry:     polygon
   geometry_params:
     min_area_sqm: 25.0             # ignore slivers and annotation polygons
-  code:         "PARC"
-  output:       "site_parcels.geojson"
+  code:         "PL"
+  output:       "site_polygons.geojson"
   fields:
-    Code:         "SP_P1_PARC"
+    Code:         null
     Plot_No:      {from_dwg_name: true}
-    Block_No:     {spatial_join: secondary}
+    Zone_ID:      {spatial_join: secondary}
     Area_Ha:      {calculate: Area_Ha}
     Perimeter_Km: {calculate: Perimeter_Km}
     Land_Use:     " "
@@ -593,23 +592,23 @@ If `geometry:` is omitted, it defaults to `polygon`.
 
 #### Using match_mode: prefix
 
-When multiple AutoCAD layers share a prefix (e.g. `LT-TRENCH-AC`, `LT-TRENCH-DC`), use `prefix` mode to capture all of them in one pass.
+When multiple AutoCAD layers share a prefix (e.g. `POLY-LAYER-A`, `POLY-LAYER-B`), use `prefix` mode to capture all of them in one pass.
 
 ```yaml
-- name:         "LT Cable Trench"
+- name:         "Polygon Layer"
   locked:       false
-  source_dwg:   lt_cable_P1
-  source_layer: "LT-TRENCH"        # prefix: captures LT-TRENCH-AC, LT-TRENCH-DC, etc.
+  source_dwg:   drawing_a
+  source_layer: "POLY-LAYER"        # prefix: captures POLY-LAYER-A, POLY-LAYER-B, etc.
   match_mode:   prefix
-  geometry:     line
-  code:         "LTT"
-  output:       "lt_cable_trench.geojson"
+  geometry:     polygon
+  code:         "PL"
+  output:       "polygon_layer.geojson"
   fields:
-    Code:           "SP_P1_LTT"
-    Classification: "LT Cable Trench"
-    Block_No:       {spatial_join: primary}
+    Code:           null
+    Category:       "Polygon"
+    Zone_ID:        {spatial_join: primary}
     Connection_ID:  {auto_sequence: true}
-    AC_DC:          {from_merge_source: layer_subtype}  # auto-detected from layer suffix
+    Sub_Type:       {from_merge_source: layer_subtype}  # auto-detected from layer suffix
     Length_m:       {calculate: Length_m}
 ```
 
@@ -620,11 +619,11 @@ When multiple AutoCAD layers share a prefix (e.g. `LT-TRENCH-AC`, `LT-TRENCH-DC`
 If a CAD layer might have slightly different names across DWG revisions, declare fallbacks:
 
 ```yaml
-  source_layer: "Boundary-12.5 MW Block"
+  source_layer: "ZONE-BOUNDARY"
   fallbacks:
-    - "Boundary-12.5MW Block"
-    - "Block Boundary"
-    - "12.5 MW Block"
+    - "ZONE_BOUNDARY"
+    - "Zone Boundary"
+    - "Zone-Boundary"
 ```
 
 Fallbacks are tried in order. The first match found is used.
@@ -652,7 +651,7 @@ Creates N child point features from each parent feature by expanding block attri
   fields:
     Code:        "CAB_PORT"
     Port_ID:     {from_attr: Child_ID}
-    Block_No:    {spatial_join: secondary}
+    Zone_ID:     {spatial_join: secondary}
     Cabinet_Ref:
       spatial_join:
         method:     nearest
@@ -682,11 +681,11 @@ Two fields are always present on every feature and do not need to be declared:
 Written identically to every feature.
 
 ```yaml
-Classification: "Block Boundaries"
-Year:           2024
-Status:         "Draft"
-Empty_Field:    " "    # single space — standard blank placeholder
-Null_Field:     null   # written as " " in output
+Category:   "Zone Boundaries"
+Year:       2024
+Status:     "Draft"
+Empty_Field: " "    # single space — standard blank placeholder
+Null_Field:  null   # written as " " in output
 ```
 
 ---
@@ -709,11 +708,11 @@ Plot_No:
 Reads a block attribute tag value from the AutoCAD entity. Tag name is case-insensitive (normalised to uppercase before lookup).
 
 ```yaml
-Tracker_Type:
+Asset_Type:
   from_attr: "TYPE"
 
-Capacity_kWp:
-  from_attr: "CAPACITY"
+Attribute_1:
+  from_attr: "ATTR_1"
 
 Serial_No:
   from_attr: "SERIAL_NO"
@@ -773,27 +772,27 @@ global:
 
 Assigns a value by finding the nearest matching feature in another layer's spatial cache.
 
-**Primary join** — uses `global.block_no.primary_source` (typically reads MMS text labels):
+**Primary join** — uses `global.block_no.primary_source` (typically reads text labels):
 
 ```yaml
-Block_No:
+Zone_ID:
   spatial_join: primary
 ```
 
 **Secondary join** — uses `global.block_no.secondary_source` (typically joins from the spatial reference layer):
 
 ```yaml
-Block_No:
+Zone_ID:
   spatial_join: secondary
 ```
 
 **Custom nearest join** — finds nearest feature from any cached layer:
 
 ```yaml
-Nearest_Tracker:
+Nearest_Asset:
   spatial_join:
     method:     nearest
-    from_layer: "Solar Tracker"
+    from_layer: "Equipment Points"
     from_field: "Connection_ID"
 ```
 
@@ -819,10 +818,10 @@ End_Node:
 Full_Ref:
   spatial_join:
     method:     nearest
-    from_layer: "Block Boundaries"
-    from_field: "Block_No"
+    from_layer: "Zone Boundaries"
+    from_field: "Zone_ID"
     transform:
-      format: "{Plot_No}-{Block_No}"
+      format: "{Plot_No}-{Zone_ID}"
 ```
 
 ---
@@ -842,7 +841,7 @@ Used only in layers with `merge_sources`. Stamps per-source metadata onto featur
 Sub_Plot:
   from_merge_source: sub_plot
 
-AC_DC:
+Sub_Type:
   from_merge_source: layer_subtype
 ```
 
@@ -855,11 +854,11 @@ Reads a value from a custom key defined anywhere in the `global:` section. Usefu
 ```yaml
 # In global:
 global:
-  ht_cable_end_connection: "GIS Sub-Station"
+  route_end_point: "End Point"
 
 # In a layer's fields:
 End_Connection:
-  from_config: ht_cable_end_connection
+  from_config: route_end_point
 ```
 
 ---
@@ -869,10 +868,10 @@ End_Connection:
 Walk a list of resolvers in order; the first one that returns a non-null, non-empty value wins. Use this when a field should try multiple sources before falling back to a default.
 
 ```yaml
-Block_No:
+Zone_ID:
   resolver:
     - type: from_attr        # 1. try reading a block attribute tag first
-      tag:  BLOCKNO
+      tag:  ZONE_TAG
     - type: spatial_join     # 2. fall back to spatial join from primary source
       source: primary
     - type: fallback         # 3. last resort constant
@@ -1033,7 +1032,7 @@ Seq_No:
     from_field: Connection_ID
     prefix:     "SEQ-"
     pad:        3
-# "A9_ST_07" → "SEQ-007"
+# "A9_PT_07" → "SEQ-007"
 ```
 
 ---
@@ -1125,7 +1124,7 @@ Override the pattern in `global.connection_id`:
 ```yaml
 global:
   connection_id:
-    pattern: "SP_{plot_name}_{code}_{seq:02d}"
+    pattern: "{plot_name}_{code}_{seq:02d}"
 ```
 
 - `{plot_name}` — resolved value of the `Plot_No` field
@@ -1136,13 +1135,13 @@ global:
 
 | Scenario | Connection_ID |
 |---|---|
-| Block boundary #1, plot A9, code BL | `A9_BL_01` |
-| Solar tracker #17, plot A9a, code ST | `A9a_ST_17` |
-| HT trench #4, plot A9b, code HTT | `A9b_HTT_04` |
+| Zone boundary #1, plot A1, code ZB | `A1_ZB_01` |
+| Equipment point #17, plot A1a, code PT | `A1a_PT_17` |
+| Route line #4, plot A1b, code LN | `A1b_LN_04` |
 
 `Connection_ID` is seeded at the start of field resolution with a placeholder, then **re-derived after pass 1** once `Plot_No` and `Code` have their final values. The final `Connection_ID` always reflects the actual resolved zone and code.
 
-`Connection_ID` is used as the join key in `spatial_join: nearest` configurations — allowing inter-layer linkage (e.g. each cable segment referencing the junction box it connects to) to be fully automated.
+`Connection_ID` is used as the join key in `spatial_join: nearest` configurations — allowing inter-layer linkage (e.g. each line segment referencing the junction box it connects to) to be fully automated.
 
 ---
 
@@ -1156,36 +1155,34 @@ Keep absolute file paths in `dwg_paths.yaml` (gitignored). Reference them by ali
 
 ```yaml
 # dwg_paths.yaml
-array_layout_P1a: "D:/Projects/SolarPark/CAD/P1/P1a-Array Layout.dwg"
-array_layout_P1b: "D:/Projects/SolarPark/CAD/P1/P1b-Array Layout.dwg"
-lt_cable_P1:      "D:/Projects/SolarPark/CAD/P1/P1-LT Cable Routing.dwg"
-ht_fo_P1a:        "D:/Projects/SolarPark/CAD/P1/P1a-HT&FO Cable Routing.dwg"
-ht_fo_P1b:        "D:/Projects/SolarPark/CAD/P1/P1b-HT&FO Cable Routing.dwg"
-pile_layout_P1:   null    # null = file not yet received
+drawing_a: "D:/Projects/MyProject/CAD/Drawing-A.dwg"
+drawing_b: "D:/Projects/MyProject/CAD/Drawing-B.dwg"
+drawing_c: "D:/Projects/MyProject/CAD/Drawing-C.dwg"
+drawing_d: null    # null = file not yet received
 ```
 
 ### Merging from multiple DWGs into one layer
 
 ```yaml
-- name:         "All Trackers"
+- name:         "All Equipment"
   geometry:     point
   match_mode:   exact
-  source_layer: "Solar Tracker"
-  code:         "ST"
+  source_layer: "POINT-LAYER"
+  code:         "PT"
   merge_sources:
-    - source_dwg:   array_layout_P1a
-      sub_plot:     "P1a"
-      source_layer: "Solar Tracker"
-    - source_dwg:   array_layout_P1b
-      sub_plot:     "P1b"
-      source_layer: "Solar Tracker"
-    - source_dwg:   array_layout_P1c
-      sub_plot:     "P1c"
-      source_layer: "Solar Tracker"
+    - source_dwg:   drawing_a
+      sub_plot:     "A"
+      source_layer: "POINT-LAYER"
+    - source_dwg:   drawing_b
+      sub_plot:     "B"
+      source_layer: "POINT-LAYER"
+    - source_dwg:   drawing_c
+      sub_plot:     "C"
+      source_layer: "POINT-LAYER"
   fields:
     Sub_Plot:    {from_merge_source: sub_plot}
     Plot_No:     {from_dwg_name: true}
-    Block_No:    {spatial_join: primary}
+    Zone_ID:     {spatial_join: primary}
     ...
 ```
 
@@ -1201,14 +1198,14 @@ All three DWGs must be open in AutoCAD. If one is missing, that sub-plot is skip
 
 ### What block attributes are
 
-A **block** in AutoCAD is a named symbol definition. When inserted into a drawing, each INSERT entity holds its own values for the block's named attribute fields (ATTDEF). For example, a "Solar Tracker" block might have attributes `TYPE`, `CAPACITY`, `SERIAL_NO`.
+A **block** in AutoCAD is a named symbol definition. When inserted into a drawing, each INSERT entity holds its own values for the block's named attribute fields (ATTDEF). For example, an "Equipment" block might have attributes `TYPE`, `SERIAL_NO`, `CAPACITY`.
 
 ### Workflow
 
 **Step 1 — Identify the layer and block type.**
 
 ```
-python extractio.py config.yaml --dwg-layers array_layout_P1a
+python extractio.py config.yaml --dwg-layers drawing_a
 ```
 
 Find the layer containing your block INSERT entities. In AutoCAD, double-click one entity to see its attribute tags in the attribute editor.
@@ -1216,15 +1213,15 @@ Find the layer containing your block INSERT entities. In AutoCAD, double-click o
 **Step 2 — Configure the layer.**
 
 ```yaml
-- name:         "Solar Tracker"
+- name:         "Equipment Points"
   geometry:     point
-  source_layer: "Solar Tracker"
+  source_layer: "POINT-LAYER"
   geometry_params:
     only_insert: true           # only block INSERT entities — skip text, POINT
-    block_name:  "SOLAR_TRACKER"  # optional: filter by block definition name
+    block_name:  "POINT_BLOCK"  # optional: filter by block definition name
   fields:
-    Tracker_Type:  {from_attr: "TYPE"}
-    Capacity_kWp:  {from_attr: "CAPACITY"}
+    Asset_Type:    {from_attr: "TYPE"}
+    Attribute_1:   {from_attr: "ATTR_1"}
     Serial_No:     {from_attr: "SERIAL_NO"}
 ```
 
@@ -1260,17 +1257,17 @@ Declare a parent config with `inherits:`. The parent is deep-merged first; the c
 inherits: shared_base.yaml
 
 global:
-  project_name: "SolarPark_A"
+  project_name: "MyProject_A"
   output_dir:   "./outputs/A"
 ```
 
 ```yaml
 # shared_base.yaml — common settings for all projects
 global:
-  crs:         "EPSG:32643"
+  crs:         "EPSG:32632"
   common_fields:
-    Country: "India"
-    State:   "Rajasthan"
+    Organisation: "My Organisation"
+    Prepared_By:  "GIS Team"
   calculated_fields:
     Area_Ha: {formula: area, unit: hectares, round: 2}
 ```
@@ -1292,8 +1289,8 @@ global:
 
 ```bash
 # .env (same folder, gitignored automatically)
-OUTPUT_DIR=D:/Projects/SolarPark/Output
-DEFAULT_CRS=EPSG:32643
+OUTPUT_DIR=D:/Projects/MyProject/Output
+DEFAULT_CRS=EPSG:32632
 ```
 
 The `.env` file is never committed — it holds machine-specific paths and secrets. Add it to `.gitignore`.
@@ -1313,21 +1310,21 @@ global:
       locked:      false
 
 layers:
-  - name:         "HT Cable Trench"
+  - name:         "Route Lines"
     use:          line_defaults     # inherits geometry, match_mode, locked
-    source_dwg:   ht_fo_P1a
-    source_layer: "HT-TRENCH-LINE"
-    code:         "HTT"
-    output:       "ht_cable_trench.geojson"
+    source_dwg:   drawing_c
+    source_layer: "LINE-LAYER"
+    code:         "LN"
+    output:       "route_lines.geojson"
     fields:
       ...
 
-  - name:         "LT Cable Trench"
+  - name:         "Polygon Layer"
     use:          line_defaults     # same template
-    source_dwg:   lt_cable_P1
-    source_layer: "LT-TRENCH-LINE"
-    code:         "LTT"
-    output:       "lt_cable_trench.geojson"
+    source_dwg:   drawing_a
+    source_layer: "POLY-LAYER"
+    code:         "PL"
+    output:       "polygon_layer.geojson"
     fields:
       ...
 ```
@@ -1348,11 +1345,11 @@ global:
       Data_Source: "AutoCAD"
 
     exclude_fields:          # never inject these on any layer
-      - Jurisdiction
+      - Status
 
     # Regular common fields below:
-    Plant_Name: "My Solar Plant"
-    Country:    "India"
+    Project_Name: "My Project"
+    Organisation: "My Organisation"
 ```
 
 | Key | Description |
@@ -1370,10 +1367,10 @@ global:
 When a field should try multiple sources in sequence, use a `resolver:` list instead of a single directive. The first resolver that returns a non-null, non-empty value wins.
 
 ```yaml
-Block_No:
+Zone_ID:
   resolver:
     - type: from_attr          # 1st: try reading a block attribute
-      tag:  BLOCKNO
+      tag:  ZONE_TAG
     - type: spatial_join       # 2nd: fall back to spatial join
       source: primary
     - type: fallback           # 3rd: hard fallback
@@ -1389,7 +1386,7 @@ This is useful for layers where some entities have an attribute already set (fro
 Add an `expect:` block to any layer to validate the output feature count after extraction. Mismatches are logged as warnings.
 
 ```yaml
-- name: "Block Boundaries"
+- name: "Zone Boundaries"
   ...
   expect:
     min_features: 40      # warn if fewer than 40 features extracted
@@ -1401,7 +1398,7 @@ Add an `expect:` block to any layer to validate the output feature count after e
 If the count falls outside the declared range, you see:
 
 ```
-⚠  EXPECT FAIL: 'Block Boundaries' has 12 features  (min: 40)
+⚠  EXPECT FAIL: 'Zone Boundaries' has 12 features  (min: 40)
 ```
 
 If within range:
@@ -1492,10 +1489,10 @@ Layer names passed to `--layers`, `--unlock`, and `--lock` are fuzzy-matched. Yo
 Running with no `--run` or `--layers` argument launches the interactive layer selector:
 
 ```
-  [ 1] [ON ] 🔓 Block Boundaries
-  [ 2] [OFF] 🔓 Plot Boundaries
-  [ 3] [ON ] 🔓 Solar Tracker
-  [ 4] [OFF] 🔒 HT Cable Trench
+  [ 1] [ON ] 🔓 Zone Boundaries
+  [ 2] [OFF] 🔓 Site Boundary
+  [ 3] [ON ] 🔓 Equipment Points
+  [ 4] [OFF] 🔒 Route Lines
 ────────────────────────────────────────────────────────
   [A] All ON   [N] All OFF   [X] Run
 ```
@@ -1507,10 +1504,10 @@ Type a number to toggle, `A` to select all unlocked, `N` to deselect all, `X` to
 **Full project from scratch:**
 
 ```
-python extractio.py config.yaml --dwg-layers array_layout_P1a
-python extractio.py config.yaml --unlock "Block Boundaries"
-python extractio.py config.yaml --layers "Block Boundaries"
-python extractio.py config.yaml --lock "Block Boundaries"
+python extractio.py config.yaml --dwg-layers drawing_a
+python extractio.py config.yaml --unlock "Zone Boundaries"
+python extractio.py config.yaml --layers "Zone Boundaries"
+python extractio.py config.yaml --lock "Zone Boundaries"
 python extractio.py config.yaml --unlock-all
 python extractio.py config.yaml --run all
 python extractio.py config.yaml --lock-all
@@ -1519,15 +1516,15 @@ python extractio.py config.yaml --lock-all
 **Re-run a single layer:**
 
 ```
-python extractio.py config.yaml --unlock "Solar Tracker"
-python extractio.py config.yaml --layers "Solar Tracker"
-python extractio.py config.yaml --lock "Solar Tracker"
+python extractio.py config.yaml --unlock "Equipment Points"
+python extractio.py config.yaml --layers "Equipment Points"
+python extractio.py config.yaml --lock "Equipment Points"
 ```
 
 **Using aliases (if declared in config):**
 
 ```
-python extractio.py config.yaml --layers bb st   # "bb" = Block Boundaries, "st" = Solar Tracker
+python extractio.py config.yaml --layers zb pts   # "zb" = Zone Boundaries, "pts" = Equipment Points
 ```
 
 ---
@@ -1552,7 +1549,7 @@ Layers with `derive_from:` (`spatial_reference` or `parent_layer`) ignore the lo
 
 ### Recommended workflow
 
-1. Extract and verify the spatial reference layer (`Block Boundaries`) first → lock it
+1. Extract and verify the spatial reference layer (`Zone Boundaries`) first → lock it
 2. Extract the first batch of layers → verify output in QGIS or another GIS tool
 3. Lock verified layers → move to the next batch
 4. Repeat until all layers are extracted and locked
@@ -1569,10 +1566,10 @@ Each layer writes one GeoJSON file (RFC 7946) with an additional `crs` member fo
 ```json
 {
   "type": "FeatureCollection",
-  "name": "solar_tracker",
+  "name": "equipment_points",
   "crs": {
     "type": "name",
-    "properties": { "name": "urn:ogc:def:crs:EPSG::32643" }
+    "properties": { "name": "urn:ogc:def:crs:EPSG::32632" }
   },
   "features": [
     {
@@ -1580,13 +1577,13 @@ Each layer writes one GeoJSON file (RFC 7946) with an additional `crs` member fo
       "geometry": { "type": "Point", "coordinates": [453201.4, 2841093.7] },
       "properties": {
         "OBJECTID": 1,
-        "Connection_ID": "A9a_ST_01",
-        "Code": "SP_P1_ST",
-        "Classification": "Solar Tracker",
-        "Sub_Plot": "P1a",
-        "Block_No": "A9_BLK03",
-        "Tracker_Type": "Single-Axis",
-        "Capacity_kWp": "590"
+        "Connection_ID": "A1a_PT_01",
+        "Code": "PT",
+        "Category": "Equipment Points",
+        "Sub_Plot": "A",
+        "Zone_ID": "ZN_BLK03",
+        "Asset_Type": "Type A",
+        "Attribute_1": "value_1"
       }
     }
   ]
@@ -1616,16 +1613,16 @@ After each run, extractio saves a JSON manifest in `~/.cad_tract_versions/<proje
   "timestamp": "2025-04-14T11:32:10",
   "config_file": "config.yaml",
   "layers": [
-    {"layer_name": "Block Boundaries", "feature_count": 50, ...}
+    {"layer_name": "Zone Boundaries", "feature_count": 50, ...}
   ],
   "diff": {
     "added": [],
-    "changed": [{"layer": "Solar Tracker", "feature_count": "1240 → 1242"}],
-    "unchanged": ["Block Boundaries", "Plot Boundaries"]
+    "changed": [{"layer": "Equipment Points", "feature_count": "240 → 242"}],
+    "unchanged": ["Zone Boundaries", "Site Boundary"]
   },
   "resolved_config": {
-    "project_name": "SolarPark_P1",
-    "crs": "EPSG:32643",
+    "project_name": "MyProject",
+    "crs": "EPSG:32632",
     "layers": [...]
   }
 }
@@ -1649,8 +1646,8 @@ project-folder/
 │   ├── sample_config.yaml    ← generic annotated template (tracked in git)
 │   └── sample_dwg_paths.yaml ← DWG paths template (tracked in git)
 └── outputs/
-    ├── block_boundaries.geojson
-    └── solar_tracker.geojson
+    ├── zone_boundaries.geojson
+    └── equipment_points.geojson
 ```
 
 ### What to commit
@@ -1685,7 +1682,7 @@ If you manage many similar projects, define a `shared_base.yaml` with common set
 # project_A.yaml
 inherits: shared_base.yaml
 global:
-  project_name: SolarPark_A
+  project_name: MyProject_A
   output_dir:   ./outputs/A
 ```
 
@@ -1703,7 +1700,7 @@ global:
 
 ### Biggest single optimisation
 
-Lock the spatial reference layer (`Block Boundaries`) after first extraction. Subsequent runs load it from disk in milliseconds instead of re-reading AutoCAD.
+Lock the spatial reference layer (`Zone Boundaries`) after first extraction. Subsequent runs load it from disk in milliseconds instead of re-reading AutoCAD.
 
 ### Progress display
 
@@ -1754,14 +1751,14 @@ The `source_layer` value in your config does not match any layer name in that DW
 
 The zone/plot ID could not be extracted from the DWG filename.
 
-**Fix:** either rename the DWG file to include a recognisable pattern (e.g. `Layout (Plot A9).dwg`), or replace `{from_dwg_name: true}` with a constant string:
+**Fix:** either rename the DWG file to include a recognisable pattern (e.g. `Layout (Plot A1).dwg`), or replace `{from_dwg_name: true}` with a constant string:
 ```yaml
-Plot_No: "A9"
+Plot_No: "A1"
 ```
 
 ---
 
-### `spatial_join MISS: 'Block_No' — layer 'Block Boundaries' not found in cache`
+### `spatial_join MISS: 'Zone_ID' — layer 'Zone Boundaries' not found in cache`
 
 A spatial join tried to look up a zone but the spatial reference layer is not loaded.
 
@@ -1834,7 +1831,7 @@ The zone/plot ID was not resolved — the fallback `A?` is in use.
 ### `expect:` warning fires unexpectedly
 
 ```
-⚠  EXPECT FAIL: 'Block Boundaries' has 12 features  (min: 40)
+⚠  EXPECT FAIL: 'Zone Boundaries' has 12 features  (min: 40)
 ```
 
 **Causes:**
@@ -1878,7 +1875,7 @@ A `derive_from: spatial_reference` layer requires shapely.
 ### Before writing the config
 
 - [ ] AutoCAD is installed and all DWG files are accessible
-- [ ] You know which DWG layer contains your spatial reference grid (block/zone boundaries)
+- [ ] You know which DWG layer contains your spatial reference grid (zone/block boundaries)
 - [ ] You have a list of output layers you need to produce
 - [ ] You know the coordinate reference system (UTM zone / EPSG code) for your project area
 
@@ -1926,7 +1923,3 @@ A `derive_from: spatial_reference` layer requires shapely.
 | `samples/sample_dwg_paths.yaml` | DWG paths file template |
 
 ---
-
-## License
-
-MIT
