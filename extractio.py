@@ -3068,7 +3068,7 @@ def match_layers_from_cli(all_layers, cli_args):
                     r = difflib.SequenceMatcher(None, cl, layer["name"].lower()).ratio()
                     if r > best: best = r; bl = layer
                 if best >= 0.82:
-                    matched = bl; match_type = f"fuzzy({int(best*100)}%)"; match_len = span; break
+                    matched = bl; match_type = f"fuzzy(score={best:.2f})"; match_len = span; break
 
         if matched:
             if matched not in selected:
@@ -3435,7 +3435,7 @@ class SourceLayerValidator:
 # ============================================================
 
 
-def _scan_dwg_for_builder(doc, dwg_alias, existing_layer_cache=None):
+def _scan_dwg_for_builder(doc, dwg_alias, dwg_path=None, existing_layer_cache=None):
     """Scan a DWG document for layer metadata: entity types, attr tags, bbox."""
     if existing_layer_cache:
         layer_names = list(existing_layer_cache)
@@ -3490,10 +3490,18 @@ def _scan_dwg_for_builder(doc, dwg_alias, existing_layer_cache=None):
             "bbox":             [min(xs, default=0), min(ys, default=0),
                                  max(xs, default=0), max(ys, default=0)],
         }
+    _mtime = None
+    if dwg_path:
+        try:
+            _mtime = os.path.getmtime(dwg_path)
+        except OSError:
+            pass
     result["__meta__"] = {
         "has_zone_grid": has_zone_grid,
         "scanned_at":    _datetime.now().isoformat(),
         "dwg_alias":     dwg_alias,
+        "dwg_path":      dwg_path,
+        "dwg_mtime":     _mtime,
     }
     return result
 
@@ -3647,7 +3655,7 @@ class LLMYAMLBuilder:
                     Logger.warn(f"  Could not open {alias} — skipping")
                     continue
                 layer_cache = existing_layer_cache.get(path)
-                scan[alias] = _scan_dwg_for_builder(doc, alias, layer_cache)
+                scan[alias] = _scan_dwg_for_builder(doc, alias, path, layer_cache)
                 n_layers = len([k for k in scan[alias] if not k.startswith("__")])
                 Logger.ok(f"  {alias}: {n_layers} layers scanned")
         finally:
@@ -3878,6 +3886,39 @@ class LLMYAMLBuilder:
                 try:
                     with open(latest, encoding="utf-8") as f:
                         scan_text = f.read()
+                    # Stale scan detection — warn if scan is old or DWG has changed
+                    try:
+                        _scan_data = json.loads(scan_text)
+                        _now = _datetime.now()
+                        for _alias, _alias_data in _scan_data.items():
+                            if _alias.startswith("__") or not isinstance(_alias_data, dict):
+                                continue
+                            _meta = _alias_data.get("__meta__", {})
+                            _sat  = _meta.get("scanned_at")
+                            if _sat:
+                                try:
+                                    _age_h = (_now - _datetime.fromisoformat(_sat)).total_seconds() / 3600
+                                    if _age_h > 24:
+                                        Logger.warn(
+                                            f"  Scan for '{_alias}' is {_age_h:.0f}h old — "
+                                            f"re-run --scan-only if the DWG has changed"
+                                        )
+                                except Exception:
+                                    pass
+                            _stored_mtime = _meta.get("dwg_mtime")
+                            if _stored_mtime is not None:
+                                _dwg_path = _meta.get("dwg_path") or _meta.get("dwg_alias")
+                                if _dwg_path and os.path.exists(_dwg_path):
+                                    try:
+                                        if abs(os.path.getmtime(_dwg_path) - _stored_mtime) > 1:
+                                            Logger.warn(
+                                                f"  DWG '{_alias}' has been modified since scan — "
+                                                f"re-run --scan-only for accurate layer names"
+                                            )
+                                    except OSError:
+                                        pass
+                    except Exception:
+                        pass
                     context_parts.append(
                         f"=== DWG SCAN (exact layer names, entity types, attribute tags) ===\n{scan_text}"
                     )
