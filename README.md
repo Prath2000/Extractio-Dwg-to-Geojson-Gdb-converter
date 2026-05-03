@@ -1,4 +1,4 @@
-# extractio
+# Extractio
 
 **extractio** converts AutoCAD DWG layers to GeoJSON — driven entirely by a YAML config file. It connects directly to a running AutoCAD instance, reads geometry and attributes without any manual export step, and writes clean GeoJSON files ready for QGIS, PostGIS, Mapbox, or any GIS pipeline.
 
