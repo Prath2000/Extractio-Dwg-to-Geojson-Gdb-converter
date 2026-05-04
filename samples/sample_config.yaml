@@ -87,7 +87,7 @@ global:
   # Spatial reference config — fixed internal key name "block_no".
   # primary_source:   read by {spatial_join: primary}
   # secondary_source: read by {spatial_join: secondary}
-  block_no:
+  zone_no:
     primary_source:
       from_dwg:   [drawing_a, drawing_b]      # [EDIT] DWG aliases that hold the labels
       from_layer: "ZONE-LABELS"               # [EDIT] CAD layer containing text labels
