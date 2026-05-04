@@ -1,5 +1,5 @@
 ﻿# Extractio — Complete Beginner Guide
-### From zero to your first GeoJSON in one sitting
+### From zero to your first GeoJSON/GDB in one sitting
 
 **Author:** Prathamesh Athavale  
 **Package:** `extractio` on PyPI  
