@@ -14,7 +14,7 @@ No code changes are needed between projects. Everything — geometry type, field
 - Extracts **block attributes** by tag name and maps them to any output field name you choose
 - Merges features from multiple DWGs into one GeoJSON with per-source tagging
 - Computes area, perimeter, and length from geometry
-- Assigns auto-incremented `Connection_ID` keys (globally unique across the project)
+- Assigns auto-incremented `Unique_ID` keys (globally unique across the project)
 - Performs spatial joins — stamps a zone/block identifier on every feature from a reference layer
 - Derives dissolved outer-shell boundaries from block/zone polygon layers (no separate DWG source needed)
 - Filters phantom reference polygons using text label count as ground truth
