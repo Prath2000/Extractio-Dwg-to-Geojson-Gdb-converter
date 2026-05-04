@@ -1,9 +1,9 @@
-# Extractio — Complete Beginner Guide
+﻿# Extractio — Complete Beginner Guide
 ### From zero to your first GeoJSON in one sitting
 
 **Author:** Prathamesh Athavale  
 **Package:** `extractio` on PyPI  
-**What it does:** Reads geometry and data from AutoCAD DWG files and converts them to GeoJSON or File Geodatabase (GDB) — no manual export, no clicking, no code.
+**What it does:** Reads geometry and data from AutoCAD DWG files and converts them to GeoJSON or File Geodatabase (GDB).
 
 ---
 
@@ -12,242 +12,233 @@
 1. [What You Need Before You Start](#1-what-you-need-before-you-start)
 2. [Install Python](#2-install-python)
 3. [Install Extractio](#3-install-extractio)
-4. [Understand the Three Files You Will Work With](#4-understand-the-three-files-you-will-work-with)
+4. [Two Ways to Set Up Your Config](#4-two-ways-to-set-up-your-config)
 5. [Set Up Your Project Folder](#5-set-up-your-project-folder)
-6. [Get the Sample Config Files](#6-get-the-sample-config-files)
-7. [Edit dwg_paths.yaml — Tell Extractio Where Your DWGs Are](#7-edit-dwg_pathsyaml--tell-extractio-where-your-dwgs-are)
-8. [Edit config.yaml — Define What to Extract](#8-edit-configyaml--define-what-to-extract)
+6. [Edit dwg_paths.yaml](#6-edit-dwg_pathsyaml)
+7. [PATH A — LLM Config Generation (Recommended)](#7-path-a--llm-config-generation-recommended)
+8. [PATH B — Write config.yaml Manually](#8-path-b--write-configyaml-manually)
 9. [Open Your DWGs in AutoCAD](#9-open-your-dwgs-in-autocad)
 10. [Run Extractio](#10-run-extractio)
 11. [Read the Output](#11-read-the-output)
-12. [Optional — Output as File Geodatabase (GDB)](#12-optional--output-as-file-geodatabase-gdb)
+12. [Optional — GDB Output](#12-optional--gdb-output)
 13. [Common Errors and Fixes](#13-common-errors-and-fixes)
-14. [Quick Reference — Commands You Will Use Every Day](#14-quick-reference--commands-you-will-use-every-day)
+14. [Quick Reference](#14-quick-reference)
 
 ---
 
 ## 1. What You Need Before You Start
 
-Before installing anything, make sure you have:
-
 | Requirement | Details |
 |---|---|
-| **Windows PC** | Windows 10 or 11 (extractio only works on Windows — it talks to AutoCAD directly) |
-| **AutoCAD** | Any version that supports COM (AutoCAD 2010 and later all do) |
-| **Your DWG files** | The files you want to convert. They must be saved on your computer |
-| **Python 3.9 or later** | Free — instructions below |
-
-You do **not** need QGIS, ArcGIS, or any other GIS software installed.
+| **Windows PC** | Windows 10 or 11 — extractio talks directly to AutoCAD via Windows COM |
+| **AutoCAD** | Any version with COM support (2010 and later) |
+| **Your DWG files** | The files you want to convert, saved on your machine |
+| **Python 3.9+** | Free — instructions below |
+| **Groq API key** | Free — only needed for Path A (AI config generation) |
 
 ---
 
 ## 2. Install Python
 
-If you already have Python 3.9+, skip this section. To check, open a terminal (press `Win + R`, type `cmd`, press Enter) and run:
+Open a terminal (`Win + R` type `cmd` press Enter) and run:
 
 ```
 python --version
 ```
 
-If it prints something like `Python 3.11.4`, you are good.
+If you see `Python 3.9` or higher, skip to Section 3.
 
-If you get an error or the version is below 3.9:
-
+If not:
 1. Go to **https://www.python.org/downloads/**
-2. Click the big yellow **Download Python 3.x.x** button
+2. Click **Download Python**
 3. Run the installer
-4. **IMPORTANT:** On the first screen of the installer, tick the box that says **"Add Python to PATH"** before clicking Install Now
+4. **Tick "Add Python to PATH"** before clicking Install Now
 
-After installing, close the terminal, open a new one, and run `python --version` again to confirm.
+Close and reopen the terminal, then confirm with `python --version`.
 
 ---
 
 ## 3. Install Extractio
 
-Open a terminal (or PowerShell — press `Win + X`, choose "Terminal") and run:
-
 ```
 pip install extractio
 ```
 
-That's it. This installs the engine plus creates the `extractio` command you will use to run extractions.
-
-To confirm it installed correctly:
+Confirm it worked:
 
 ```
 extractio --version
 ```
 
 Expected output:
+
 ```
 extractio 0.1.1 — by Prathamesh Athavale
 ```
 
-**Optional extras** — install these if you need them:
+Install optional extras depending on what you need:
 
 ```
-pip install extractio[shapely]    # needed for dissolved boundary layers
-pip install extractio[gdb]        # needed for GDB output (requires GDAL 3.6+)
-pip install extractio[llm]        # needed for AI-assisted config generation
-pip install extractio[all]        # installs everything
+pip install extractio[llm]        <- AI config builder (install this for Path A)
+pip install extractio[shapely]    <- dissolved boundary layers
+pip install extractio[gdb]        <- GDB output
+pip install extractio[all]        <- everything at once
 ```
 
 ---
 
-## 4. Understand the Three Files You Will Work With
+## 4. Two Ways to Set Up Your Config
 
-Extractio does not have a user interface. You control it entirely through two YAML text files that you create once per project. YAML is not code — it is just structured text with colons and indentation.
+Extractio needs a `config.yaml` file that tells it which layers to extract and what fields to produce. There are two ways to create it:
 
-| File | What It Does | Do You Edit It? |
+| | Path A — LLM Builder (Recommended) | Path B — Manual |
 |---|---|---|
-| `config.yaml` | Tells extractio which layers to extract, what fields to include, and how to calculate/join values | YES — once per project |
-| `dwg_paths.yaml` | Tells extractio the full file path to each of your DWG files | YES — once per machine |
-| `extractio.py` | The engine itself | NEVER — do not touch this |
+| **Best for** | Everyone, especially beginners | Advanced users only |
+| **How** | AI reads your spec sheets and writes the YAML for you | You write YAML by hand |
+| **AutoCAD needed?** | No — completely independent of AutoCAD | No (but helpful for layer name lookup) |
+| **API key needed?** | Yes — free Groq key | No |
 
-Both YAML files live in your project folder alongside your outputs.
+**Use Path A.** It requires no YAML knowledge and the AI handles all the field naming, geometry types, and structure automatically. Even if you tweak the output afterwards, starting from AI-generated YAML is far faster than writing from scratch.
 
 ---
 
 ## 5. Set Up Your Project Folder
 
-Create a folder anywhere on your computer for this project. For example:
+Create a folder for this project:
 
 ```
 D:\Projects\MySiteExtraction\
 ```
 
-Inside that folder, create an `outputs` subfolder:
+Create an `outputs` subfolder inside it:
 
 ```
 D:\Projects\MySiteExtraction\
-└── outputs\
-```
-
-All your GeoJSON files will appear in `outputs\` after each run.
-
----
-
-## 6. Get the Sample Config Files
-
-Extractio ships with two sample files you copy and edit. To find where pip installed them, run:
-
-```
-pip show -f extractio
-```
-
-Look for lines ending in `sample_config.yaml` and `sample_dwg_paths.yaml` — those are your templates.
-
-Alternatively, download them directly from GitHub:
-
-- **sample_config.yaml** — https://github.com/Prath2000/Extractio-Dwg-to-Geojson-Gdb-converter/blob/master/samples/sample_config.yaml
-- **sample_dwg_paths.yaml** — https://github.com/Prath2000/Extractio-Dwg-to-Geojson-Gdb-converter/blob/master/samples/sample_dwg_paths.yaml
-
-Copy both files into your project folder and rename them:
-
-```
-D:\Projects\MySiteExtraction\
-├── config.yaml           ← renamed from sample_config.yaml
-├── dwg_paths.yaml        ← renamed from sample_dwg_paths.yaml
-└── outputs\
+    outputs\
 ```
 
 ---
 
-## 7. Edit dwg_paths.yaml — Tell Extractio Where Your DWGs Are
+## 6. Edit dwg_paths.yaml
 
-Open `dwg_paths.yaml` in any text editor (Notepad works, VS Code is better).
+Download the template from:
+https://github.com/Prath2000/Extractio-Dwg-to-Geojson-Gdb-converter/blob/master/samples/sample_dwg_paths.yaml
 
-The file looks like this:
+Save it into your project folder as `dwg_paths.yaml`. Open it in any text editor and replace the example paths with your own:
 
 ```yaml
-drawing_a: "D:/Projects/MyProject/CAD/Drawing-A.dwg"
-drawing_b: "D:/Projects/MyProject/CAD/Drawing-B.dwg"
-drawing_c: "D:/Projects/MyProject/CAD/Drawing-C.dwg"
+site_plan:   "D:/Projects/Highway/CAD/Site-Plan-Rev3.dwg"
+zone_layout: "D:/Projects/Highway/CAD/Zone-Layout.dwg"
 ```
 
-**What to do:**
+Rules:
+- Short nicknames only — lowercase, no spaces
+- Use forward slashes `/` in paths, not backslashes
+- These nicknames are referenced later in config.yaml — they must match exactly
 
-1. Replace `drawing_a`, `drawing_b`, etc. with short nickname names for your DWGs — use lowercase, no spaces (e.g. `site_plan`, `zone_layout`, `services`)
-2. Replace the path strings with the actual full path to each DWG on your machine
-3. Use forward slashes `/` in paths, not backslashes `\`
+---
 
-**Example for a real project:**
+## 7. PATH A — LLM Config Generation (Recommended)
 
-```yaml
-site_plan:    "D:/Projects/Highway/CAD/Site-Plan-Rev3.dwg"
-zone_layout:  "D:/Projects/Highway/CAD/Zone-Layout-Rev2.dwg"
+This is the fast, beginner-friendly path. The AI reads your project documents and builds the entire `config.yaml` for you. **AutoCAD does not need to be open during this step.**
+
+### Step 1 — Get a free Groq API key
+
+1. Go to **https://console.groq.com**
+2. Sign up (free)
+3. Go to API Keys and create a key — it starts with `gsk_`
+
+### Step 2 — Create a .env file
+
+In your project folder, create a plain text file named `.env` (no filename before the dot). Add this line:
+
+```
+GROQ_API_KEY=gsk_your_key_here
 ```
 
-**Important:** The short names you use here (like `site_plan`) must match exactly what you write in `config.yaml`. Think of them as labels.
+Save it. Extractio reads this automatically.
 
-If you have only one DWG, just have one line:
+### Step 3 — Gather your reference documents
 
-```yaml
-my_drawing: "D:/path/to/MyDrawing.dwg"
+The AI learns from documents you provide. Good sources:
+
+- **PDF spec sheets** — layer schedules, attribute tables, data dictionaries
+- **Word documents** — project briefs, GIS data requirements
+- **An existing config.yaml** from a similar project
+
+Even a single PDF that lists layer names and what data each layer should carry is enough.
+
+### Step 4 — (Optional but recommended) Scan your DWGs first
+
+If AutoCAD is open with your DWGs loaded, run this before the builder:
+
+```
+extractio --scan-only
+```
+
+This saves a snapshot of all layer names from your DWGs into a `scan_*.json` file. The LLM builder finds and uses it automatically — so the AI will know your exact CAD layer names instead of guessing.
+
+Skip this step if AutoCAD is not available yet.
+
+### Step 5 — Run the builder
+
+Open a terminal and go to your project folder:
+
+```
+cd "D:\Projects\MySiteExtraction"
+```
+
+Run:
+
+```
+extractio --build
+```
+
+Or pass your reference documents directly to skip the file prompt:
+
+```
+extractio --build --ref "D:/Docs/LayerSchedule.pdf" "D:/Docs/DataDictionary.docx"
+```
+
+The tool reads your documents and then presents each generated layer for your review:
+
+```
+  Layer 1/5 -- "Site Boundary"
+  ------------------------------------------------
+  geometry:     polygon
+  source_layer: SITE-BOUNDARY
+  fields:       Category, Area_Ha, Perimeter_Km, Notes
+
+  [A]ccept  [E]dit  [S]kip  [R]egenerate  >
+```
+
+- **A** — accept this layer as-is
+- **E** — open an editor to tweak the layer before accepting
+- **S** — skip this layer (it will not be in the config)
+- **R** — ask the AI to regenerate this layer
+
+### Step 6 — Config is saved automatically
+
+After reviewing all layers, `config.yaml` is saved to your project folder. Go to Section 9.
+
+Shortcut to skip all review prompts:
+
+```
+extractio --build --accept-all
 ```
 
 ---
 
-## 8. Edit config.yaml — Define What to Extract
+## 8. PATH B — Write config.yaml Manually
 
-This is the main file. Open it in a text editor. The file has two main sections: `global` and `layers`.
+Only use this if you have no reference documents and need full manual control.
 
-### 8a. The global section
+Download the template:
+https://github.com/Prath2000/Extractio-Dwg-to-Geojson-Gdb-converter/blob/master/samples/sample_config.yaml
 
-```yaml
-global:
-  project_name: MyProject        # a name for your project — used in file naming
-  crs: "EPSG:32643"              # coordinate system of your DWG (UTM zone for your area)
-  output_dir: "./outputs"        # where GeoJSON files are saved (relative to config.yaml)
-  dwg_paths_file: dwg_paths.yaml # keep this line exactly as-is
-  source_dwgs:
-    - site_plan                  # list the DWG nicknames you defined in dwg_paths.yaml
-    - zone_layout
-```
+Save it as `config.yaml` in your project folder.
 
-**Finding your EPSG code:**  
-Go to https://epsg.io/ and search for your location. For most of India, UTM Zone 43N is `EPSG:32643`, Zone 44N is `EPSG:32644`, Zone 45N is `EPSG:32645`.
-
-### 8b. The layers section
-
-Each entry under `layers:` produces one output GeoJSON file. Here is the minimum you need for a simple polygon layer:
-
-```yaml
-layers:
-
-  - name:         "Site Boundary"       # name for this layer — appears in the output file
-    locked:       false                 # false = will run; true = will be skipped
-    source_dwg:   site_plan             # which DWG (must match a nickname from dwg_paths.yaml)
-    source_layer: "SITE-BOUNDARY"       # exact name of the CAD layer inside the DWG
-    match_mode:   exact                 # exact = layer name must match exactly
-    geometry:     polygon               # polygon, point, or line
-    code:         "SB"                  # short code used in auto-ID generation
-    output:       "site_boundary.geojson"
-    fields:
-      Category:   "Site Boundary"       # a fixed text value stamped on every feature
-      Area_Ha:    {calculate: Area_Ha}  # auto-calculated from geometry
-      Notes:      null                  # null = empty field, filled later
-```
-
-**How to find the exact CAD layer name:**
-
-You need to know what the layer is called inside AutoCAD. Run this command (AutoCAD must be open with the DWG open):
-
-```
-extractio config.yaml --dwg-layers site_plan
-```
-
-This prints every layer name in that DWG. Copy the exact name (including capitalisation and hyphens) into `source_layer:`.
-
-### 8c. Geometry types
-
-| If your CAD layer contains... | Use geometry: |
-|---|---|
-| Closed polylines, hatches, polygonal areas | `polygon` |
-| Block inserts, points, symbols | `point` |
-| Lines, open polylines, routes, cables | `line` |
-
-### 8d. A minimal working config.yaml
+### Global section
 
 ```yaml
 global:
@@ -256,13 +247,31 @@ global:
   output_dir: "./outputs"
   dwg_paths_file: dwg_paths.yaml
   source_dwgs:
-    - my_drawing
+    - site_plan
+    - zone_layout
+```
 
+EPSG codes for India: Zone 43N = EPSG:32643, Zone 44N = EPSG:32644, Zone 45N = EPSG:32645.
+Find yours at https://epsg.io/
+
+### Find exact CAD layer names
+
+Open AutoCAD with the DWG loaded, then run:
+
+```
+extractio config.yaml --dwg-layers site_plan
+```
+
+This prints every layer name in that DWG. Copy the exact name (capitalisation matters) into `source_layer:`.
+
+### A layer entry
+
+```yaml
 layers:
 
   - name:         "Roads"
     locked:       false
-    source_dwg:   my_drawing
+    source_dwg:   site_plan
     source_layer: "ROAD-CENTRE"
     match_mode:   exact
     geometry:     line
@@ -274,105 +283,93 @@ layers:
       Notes:      null
 ```
 
+Geometry types:
+
+| geometry | Use when layer contains |
+|---|---|
+| polygon | Closed polylines, hatched areas, zones |
+| point | Block inserts, symbols, markers |
+| line | Lines, open polylines, routes, cables |
+
 ---
 
 ## 9. Open Your DWGs in AutoCAD
 
-Extractio connects to AutoCAD live while it is running. Before you run extractio:
+Before running extraction:
 
-1. **Open AutoCAD**
-2. **Open every DWG file** listed in your `dwg_paths.yaml` inside AutoCAD
-3. Make sure the drawings are in **Model Space** (not a Paper Space layout)
-4. Do not close AutoCAD while extractio is running
-
-If a DWG is not open in AutoCAD when you run extractio, that layer will be skipped with a warning.
+1. Open AutoCAD
+2. Open every DWG listed in `dwg_paths.yaml`
+3. Make sure they are in **Model Space** (not Paper Space)
+4. Do not close AutoCAD while extractio runs
 
 ---
 
 ## 10. Run Extractio
 
-Open a terminal. Navigate to your project folder:
+Navigate to your project folder:
 
 ```
 cd "D:\Projects\MySiteExtraction"
 ```
 
-### See all your layers and their status:
+List all layers and their lock status:
 
 ```
 extractio config.yaml --list
 ```
 
-This prints every layer defined in your config, whether it is locked or unlocked, and its source layer name.
-
-### Run all unlocked layers:
+Run all unlocked layers:
 
 ```
 extractio config.yaml --run all
 ```
 
-### Run just one specific layer:
+Run one specific layer:
 
 ```
 extractio config.yaml --layers "Roads"
 ```
 
-### Run the interactive selector (choose layers from a menu):
+Interactive menu:
 
 ```
 extractio config.yaml
 ```
 
-This shows a numbered menu — type layer numbers to toggle them on/off, then press Enter to run.
-
 ---
 
 ## 11. Read the Output
 
-After running, extractio prints a report table:
+Extractio prints a summary when done:
 
 ```
-  Layer                                    Features  Status
-  ──────────────────────────────────────────────────────────
-  Roads                                          87  ✓  OK
-  Site Boundary                                   1  ✓  OK
+  Layer                            Features  Status
+  Roads                                  87  OK
+  Site Boundary                           1  OK
 ```
 
-Your GeoJSON files are in the `outputs\` folder:
-
-```
-D:\Projects\MySiteExtraction\
-├── outputs\
-│   ├── roads.geojson
-│   └── site_boundary.geojson
-```
-
-You can open these in:
-- **QGIS** — drag and drop directly onto the canvas
-- **ArcGIS Pro** — Add Data → browse to the .geojson file
-- **Any web GIS tool** — most accept GeoJSON natively
+Your GeoJSON files are in the `outputs\` folder. Open them in:
+- **QGIS** — drag and drop onto the canvas
+- **ArcGIS Pro** — Add Data and browse to the .geojson file
+- Any web GIS tool — GeoJSON is universally supported
 
 ---
 
-## 12. Optional — Output as File Geodatabase (GDB)
+## 12. Optional — GDB Output
 
-If you need a File Geodatabase instead of individual GeoJSON files:
-
-**Step 1 — Install fiona:**
+Install fiona:
 
 ```
 pip install fiona
 ```
 
-**Step 2 — Run with GDB output:**
+Run with GDB output:
 
 ```
 extractio config.yaml --run all --output-format gdb
 ```
 
-This creates a single `MyProject.gdb` folder in your `outputs\` directory with one feature class per layer.
-
-Or set it permanently in `config.yaml`:
+All layers go into one `.gdb` folder in `outputs\`. Or set it permanently in `config.yaml`:
 
 ```yaml
 global:
@@ -384,65 +381,59 @@ global:
 
 ## 13. Common Errors and Fixes
 
-### "No AutoCAD application found"
-AutoCAD is not running, or no DWG is open. Start AutoCAD, open your DWG files, then run extractio again.
+**"No AutoCAD application found"**
+AutoCAD is not running. Open it, load your DWGs, try again.
 
-### "Layer 'ROAD-CENTRE' not found in DWG"
-The layer name in `source_layer:` does not match what is in the DWG. Run `--dwg-layers` to get the exact name:
+**"Layer not found in DWG"**
+Layer name mismatch. Run `--dwg-layers` to get the exact name from the DWG.
+
+**"0 features extracted"**
+Layer exists but has no entities in Model Space. Check in AutoCAD.
+
+**"dwg_paths.yaml not found"**
+Put it in the same folder as `config.yaml`.
+
+**YAML formatting error**
+Open the file in VS Code — errors are highlighted red. Common causes: tabs instead of spaces, missing colon, unclosed quote.
+
+**"GROQ_API_KEY not set"**
+Create a `.env` file in your project folder with:
 ```
-extractio config.yaml --dwg-layers my_drawing
+GROQ_API_KEY=gsk_your_key_here
 ```
 
-Then copy the correct name into your config.
-
-### "0 features extracted"
-The layer exists in AutoCAD but contains no entities, or the entities are on a different layer than expected. Check in AutoCAD that the layer has visible geometry in Model Space.
-
-### "dwg_paths.yaml not found"
-Make sure `dwg_paths.yaml` is in the same folder as `config.yaml`, and that `dwg_paths_file: dwg_paths.yaml` is in your config's global section.
-
-### "pyyaml.scanner.ScannerError"
-There is a formatting error in your YAML file. Common causes:
-- Used a tab instead of spaces for indentation (YAML requires spaces)
-- Missing colon after a key
-- Quotes not closed
-
-Open the file in VS Code — it will highlight the error line in red.
-
-### "fiona not installed"
-You used `--output-format gdb` but fiona is not installed. Run `pip install fiona`.
+**"fiona not installed"**
+Run `pip install fiona` before using `--output-format gdb`.
 
 ---
 
-## 14. Quick Reference — Commands You Will Use Every Day
+## 14. Quick Reference
 
-```bash
-# Check extractio version
+```
+# Check version
 extractio --version
 
-# List all layers in your config
-extractio config.yaml --list
+# GENERATE config.yaml with AI — no AutoCAD needed
+extractio --build
+extractio --build --ref "Spec.pdf" "DataDict.docx"
+extractio --build --accept-all
 
-# Show all CAD layer names inside a DWG
+# Scan DWGs to give AI real layer names (AutoCAD must be open)
+extractio --scan-only
+
+# Inspect your config
+extractio config.yaml --list
+extractio config.yaml --validate
 extractio config.yaml --dwg-layers my_drawing
 
-# Run all unlocked layers
+# Run extraction (AutoCAD must be open)
 extractio config.yaml --run all
-
-# Run specific layers by name
 extractio config.yaml --layers "Roads" "Site Boundary"
-
-# Unlock a layer (so it runs)
-extractio config.yaml --unlock "Roads"
-
-# Lock a layer (so it is skipped)
-extractio config.yaml --lock "Roads"
-
-# Run with GDB output
 extractio config.yaml --run all --output-format gdb
 
-# Validate your config without running
-extractio config.yaml --validate
+# Lock / unlock layers
+extractio config.yaml --unlock "Roads"
+extractio config.yaml --lock "Roads"
 ```
 
 ---
